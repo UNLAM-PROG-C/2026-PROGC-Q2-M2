@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Conexión, lobby e inicio de partida",
+    "output": "final-lobby.html",
+    "viewBox": [1080, 960],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "player", "type": "external", "label": "Jugador" },
+    { "id": "godot", "type": "frontend", "label": "Main Godot", "sublabel": "UI" },
+    { "id": "client", "type": "frontend", "label": "LanClient", "sublabel": "TCP async" },
+    { "id": "session", "type": "backend", "label": "SessionConnection", "sublabel": "servidor" },
+    { "id": "channel", "type": "messagebus", "label": "Canal MPSC", "sublabel": "cap. 256" },
+    { "id": "loop", "type": "backend", "label": "GameLoop + Lobby", "sublabel": "único consumidor" }
+  ],
+  "segments": [
+    { "from": 150, "to": 390, "label": "Handshake" },
+    { "from": 410, "to": 650, "label": "Preparación del lobby" },
+    { "from": 670, "to": 870, "label": "Cuenta regresiva e inicio" }
+  ],
+  "messages": [
+    { "from": "player", "to": "godot", "y": 180, "label": "IP, nombre y cupo 1–4", "variant": "emphasis" },
+    { "from": "godot", "to": "client", "y": 220, "label": "ConnectAsync(...)" },
+    { "from": "client", "to": "session", "y": 260, "label": "Hello(requestedPlayers)", "variant": "emphasis" },
+    { "from": "session", "to": "channel", "y": 300, "label": "validar versión, nombre, cupo y plaza", "variant": "security" },
+    { "from": "session", "to": "client", "y": 340, "label": "Welcome + Ping", "variant": "return" },
+    { "from": "channel", "to": "loop", "y": 380, "label": "JoinSessionCommand disponible", "variant": "emphasis" },
+    { "from": "loop", "to": "channel", "y": 440, "label": "leer comandos disponibles" },
+    { "from": "loop", "to": "client", "y": 480, "label": "LobbyState(participants, requiredPlayers)", "variant": "return" },
+    { "from": "player", "to": "godot", "y": 520, "label": "seleccionar nave y Ready" },
+    { "from": "godot", "to": "client", "y": 560, "label": "SelectShip + SetReady" },
+    { "from": "client", "to": "session", "y": 600, "label": "frames con secuencia monotónica" },
+    { "from": "session", "to": "channel", "y": 640, "label": "ClientPayloadCommand", "variant": "security" },
+    { "from": "loop", "to": "client", "y": 700, "label": "validar cupo exacto y todos listos", "variant": "security" },
+    { "from": "loop", "to": "client", "y": 740, "label": "LobbyState(countdownSeconds)", "variant": "return" },
+    { "from": "loop", "to": "channel", "y": 780, "label": "confirmar comandos aplicados y crear partida", "variant": "emphasis" },
+    { "from": "loop", "to": "client", "y": 820, "label": "MatchStarted(matchId, seed, tick)", "variant": "emphasis" },
+    { "from": "client", "to": "godot", "y": 860, "label": "mostrar juego", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "client", "from": 214, "to": 388, "type": "frontend" },
+    { "participant": "session", "from": 254, "to": 648, "type": "backend" },
+    { "participant": "loop", "from": 432, "to": 868, "type": "backend" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Cupo flexible", "items": ["El primer Hello fija de 1 a 4 participantes", "Todos deben solicitar el mismo tamaño", "No se inicia con plazas faltantes"] },
+    { "dot": "rose", "title": "Validación", "items": ["La identidad pertenece al socket", "Se descartan secuencias viejas o duplicadas", "Una partida iniciada rechaza ingresos tardíos"] }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Space Shooter LAN — arquitectura objetivo final",
+    "output": "final-architecture.html",
+    "viewBox": [1520, 920],
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "runtime-path", "label": "Camino de ejecución", "focus": ["players", "godot-main", "lan-client", "sessions", "input-channel", "game-loop", "simulation"], "note": "Las entradas viajan al único escritor del mundo; el cliente sólo representa snapshots." },
+      { "id": "concurrency", "label": "Concurrencia y aislamiento", "focus": ["sessions", "input-channel", "game-loop", "output-queues", "enemy-updaters"], "note": "I/O asíncrona, colas acotadas y aplicación determinista de resultados." },
+      { "id": "operations", "label": "Operación y persistencia", "focus": ["game-loop", "records", "sessions"], "note": "Configuración, métricas, cierre controlado y actualización atómica de récords." }
+    ]
+  },
+  "components": [
+    { "id": "players", "type": "external", "label": "Jugadores 1–4", "pos": [30, 320], "size": [150, 68] },
+    { "id": "godot-main", "type": "frontend", "label": "Cliente Godot", "pos": [220, 320], "size": [170, 76] },
+    { "id": "lan-client", "type": "frontend", "label": "LanClient", "pos": [440, 320], "size": [170, 76] },
+    { "id": "shared-contracts", "type": "messagebus", "label": "Shared: DTO y framing", "pos": [550, 90], "size": [180, 76] },
+    { "id": "sessions", "type": "backend", "label": "Sesiones TCP", "pos": [680, 317], "size": [185, 82] },
+    { "id": "input-channel", "type": "messagebus", "label": "Canal MPSC", "pos": [925, 320], "size": [170, 76] },
+    { "id": "game-loop", "type": "backend", "label": "GameLoop autoritativo", "pos": [1155, 320], "size": [185, 76] },
+    { "id": "simulation", "type": "backend", "label": "Simulación del mundo", "pos": [1080, 120], "size": [185, 82] },
+    { "id": "enemy-updaters", "type": "backend", "label": "Enemy Updaters", "pos": [1320, 120], "size": [175, 82] },
+    { "id": "output-queues", "type": "messagebus", "label": "Snapshots y eventos", "pos": [900, 550], "size": [195, 78] },
+    { "id": "records", "type": "database", "label": "records.json", "pos": [1165, 745], "size": [170, 76] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Proceso cliente Godot (.NET)", "wraps": ["godot-main", "lan-client"], "pad": 24 },
+    { "kind": "region", "label": "Biblioteca compartida", "wraps": ["shared-contracts"], "pad": 20 },
+    { "kind": "region", "label": "Proceso servidor .NET autoritativo", "wraps": ["sessions", "input-channel", "game-loop", "simulation", "enemy-updaters", "output-queues", "records"], "pad": 18 }
+  ],
+  "connections": [
+    { "id": "player-input", "from": "players", "to": "godot-main", "label": "teclado", "variant": "emphasis" },
+    { "id": "ui-to-network", "from": "godot-main", "to": "lan-client", "label": "intenciones", "labelAt": [415, 290] },
+    { "id": "tcp-to-server", "from": "lan-client", "to": "sessions", "label": "TCP/IPv4 :7777 · JSON enmarcado", "variant": "emphasis", "fromSide": "right", "toSide": "left", "route": "straight", "labelAt": [645, 290] },
+    { "id": "shared-client", "from": "shared-contracts", "to": "lan-client", "label": "contratos", "fromSide": "bottom", "toSide": "top" },
+    { "id": "shared-server", "from": "shared-contracts", "to": "sessions", "label": "contratos", "fromSide": "bottom", "toSide": "top" },
+    { "id": "validated-commands", "from": "sessions", "to": "input-channel", "label": "comandos validados", "variant": "security", "fromSide": "right", "toSide": "left", "route": "straight", "labelAt": [895, 285] },
+    { "id": "single-consumer", "from": "input-channel", "to": "game-loop", "label": "consumidor único", "variant": "emphasis", "labelAt": [1125, 285] },
+    { "id": "world-step", "from": "game-loop", "to": "simulation", "label": "Step fijo", "fromSide": "top", "toSide": "bottom", "labelAt": [1120, 255] },
+    { "id": "enemy-strategy", "from": "simulation", "to": "enemy-updaters", "label": "estrategia configurable", "variant": "dashed", "labelAt": [1292, 95] },
+    { "id": "broadcast-output", "from": "game-loop", "to": "output-queues", "label": "publica sin bloquear", "variant": "emphasis", "labelAt": [1015, 465] },
+    { "id": "send-workers", "from": "output-queues", "to": "godot-main", "label": "snapshot confirmado · SendWorker + TCP", "fromSide": "left", "toSide": "bottom", "via": [[820, 589], [820, 680], [305, 680]], "labelAt": [565, 670] },
+    { "id": "persist-ranking", "from": "game-loop", "to": "records", "label": "ranking final", "fromSide": "right", "toSide": "right", "via": [[1380, 358], [1380, 783]], "labelAt": [1420, 700] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Autoridad", "items": ["El cliente envía intenciones, nunca posiciones ni daño", "Sólo el GameLoop modifica el estado mundial", "Todos representan snapshots con ServerTick"] },
+    { "dot": "orange", "title": "Concurrencia", "items": ["I/O asíncrona y Channel MPSC acotado", "Ningún hilo por enemigo", "El cálculo paralelo se aplica después en orden determinista"] },
+    { "dot": "emerald", "title": "Estado del diseño", "items": ["Fases 0–4 aprobadas", "Fase 5 implementada, pendiente de validación manual", "Robustez, experimento, arte y entrega corresponden a fases 6–9"] }
+  ]
+}

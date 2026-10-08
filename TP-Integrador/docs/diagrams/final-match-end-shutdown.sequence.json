@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Fin de partida, récords y cierre controlado",
+    "output": "final-match-end-shutdown.html",
+    "viewBox": [1080, 1020],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "operator", "type": "external", "label": "Operador", "sublabel": "Ctrl+C" },
+    { "id": "world", "type": "backend", "label": "WorldSimulation", "sublabel": "estado final" },
+    { "id": "loop", "type": "backend", "label": "GameLoop", "sublabel": "autoridad" },
+    { "id": "records", "type": "database", "label": "HighScoreStore", "sublabel": "records.json" },
+    { "id": "sessions", "type": "backend", "label": "Sesiones", "sublabel": "colas + sockets" },
+    { "id": "clients", "type": "frontend", "label": "Clientes Godot", "sublabel": "1–4" },
+    { "id": "app", "type": "backend", "label": "ServerApplication", "sublabel": "propietario del cierre" }
+  ],
+  "segments": [
+    { "from": 150, "to": 510, "label": "Resultado y persistencia" },
+    { "from": 530, "to": 900, "label": "Cancelación y liberación" }
+  ],
+  "messages": [
+    { "from": "world", "to": "loop", "y": 180, "label": "MatchStatus = Won / Lost", "variant": "emphasis" },
+    { "from": "loop", "to": "sessions", "y": 220, "label": "snapshot final", "variant": "emphasis" },
+    { "from": "loop", "to": "records", "y": 260, "label": "crear ranking individual" },
+    { "from": "loop", "to": "records", "y": 300, "label": "UpdateAsync(ranking)", "variant": "emphasis" },
+    { "from": "records", "to": "loop", "y": 340, "label": "cargar o respaldar JSON inválido", "variant": "security" },
+    { "from": "loop", "to": "records", "y": 380, "label": "autorizar escritura temporal y reemplazo", "variant": "security" },
+    { "from": "records", "to": "loop", "y": 420, "label": "top 10 actualizado", "variant": "return" },
+    { "from": "loop", "to": "sessions", "y": 460, "label": "MatchEnded(victory, ranking, records)", "variant": "emphasis" },
+    { "from": "sessions", "to": "clients", "y": 500, "label": "resultado sincronizado", "variant": "return" },
+    { "from": "operator", "to": "app", "y": 560, "label": "Ctrl+C", "variant": "emphasis" },
+    { "from": "operator", "to": "app", "y": 600, "label": "cancelar token raíz", "variant": "security" },
+    { "from": "app", "to": "sessions", "y": 640, "label": "ServerShutdown + cancelar conexiones", "variant": "dashed" },
+    { "from": "sessions", "to": "clients", "y": 680, "label": "aviso cuando sea posible", "variant": "dashed" },
+    { "from": "sessions", "to": "loop", "y": 720, "label": "DisconnectSessionCommand", "variant": "default" },
+    { "from": "app", "to": "sessions", "y": 760, "label": "esperar Receive/Send workers", "variant": "default" },
+    { "from": "app", "to": "loop", "y": 800, "label": "esperar GameLoop", "variant": "default" },
+    { "from": "app", "to": "records", "y": 840, "label": "Dispose después de escritura", "variant": "default" },
+    { "from": "app", "to": "operator", "y": 880, "label": "proceso detenido sin tareas huérfanas", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "loop", "from": 174, "to": 468, "type": "backend" },
+    { "participant": "records", "from": 294, "to": 428, "type": "database" },
+    { "participant": "app", "from": 554, "to": 888, "type": "backend" },
+    { "participant": "sessions", "from": 634, "to": 768, "type": "backend" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Orden de consistencia", "items": ["Primero se publica el snapshot final", "Luego se persisten los récords", "MatchEnded incluye la tabla ya actualizada"] },
+    { "dot": "rose", "title": "Cierre final esperado", "items": ["Un token raíz propaga cancelación", "Cada socket, tarea y temporizador tiene propietario", "Las desconexiones normales no dejan excepciones sin observar"] },
+    { "dot": "orange", "title": "Estado", "items": ["La persistencia atómica existe en Fase 5", "Timeouts, heartbeat, aviso y métricas completas pertenecen a Fase 6"] }
+  ]
+}

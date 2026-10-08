@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Entrada, simulación autoritativa y snapshot",
+    "output": "final-game-loop.html",
+    "viewBox": [1080, 1050],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "godot", "type": "frontend", "label": "Main Godot", "sublabel": "input + render" },
+    { "id": "client", "type": "frontend", "label": "LanClient", "sublabel": "TCP async" },
+    { "id": "receive", "type": "backend", "label": "ReceiveWorker", "sublabel": "por sesión" },
+    { "id": "input", "type": "messagebus", "label": "Canal MPSC", "sublabel": "acotado" },
+    { "id": "loop", "type": "backend", "label": "GameLoop", "sublabel": "60 Hz" },
+    { "id": "world", "type": "backend", "label": "World Sim.", "sublabel": "autoridad" },
+    { "id": "updater", "type": "backend", "label": "EnemyUpdater", "sublabel": "seq. / paralelo" },
+    { "id": "output", "type": "messagebus", "label": "Salida", "sublabel": "cola cap. 16" },
+    { "id": "send", "type": "backend", "label": "SendWorker", "sublabel": "por sesión" }
+  ],
+  "segments": [
+    { "from": 150, "to": 400, "label": "Captura y validación" },
+    { "from": 420, "to": 720, "label": "Tick autoritativo" },
+    { "from": 740, "to": 950, "label": "Publicación y representación" }
+  ],
+  "messages": [
+    { "from": "godot", "to": "client", "y": 180, "label": "InputState(ejes, fire, localTick)", "variant": "emphasis" },
+    { "from": "client", "to": "receive", "y": 220, "label": "TCP frame · JSON UTF-8" },
+    { "from": "receive", "to": "input", "y": 260, "label": "validar framing, tipo y secuencia", "variant": "security" },
+    { "from": "input", "to": "loop", "y": 300, "label": "ClientPayloadCommand disponible", "variant": "emphasis" },
+    { "from": "receive", "to": "godot", "y": 340, "label": "sin mutar el mundo", "variant": "dashed", "note": "La recepción sólo valida y encola." },
+    { "from": "loop", "to": "input", "y": 440, "label": "drenar comandos" },
+    { "from": "loop", "to": "world", "y": 480, "label": "aplicar intención a la sesión" },
+    { "from": "loop", "to": "world", "y": 520, "label": "Step fijo (hasta 5 recuperaciones)", "variant": "emphasis" },
+    { "from": "world", "to": "updater", "y": 560, "label": "snapshot inmutable + particiones", "variant": "dashed" },
+    { "from": "updater", "to": "world", "y": 600, "label": "intenciones ordenadas; aplicar y resolver", "variant": "return" },
+    { "from": "world", "to": "loop", "y": 640, "label": "colisiones, spawns y estado resueltos", "variant": "security" },
+    { "from": "world", "to": "loop", "y": 680, "label": "estado confirmado + ServerTick", "variant": "return" },
+    { "from": "loop", "to": "output", "y": 760, "label": "WorldSnapshot cada 3 ticks", "variant": "emphasis" },
+    { "from": "output", "to": "send", "y": 800, "label": "consumir en orden" },
+    { "from": "send", "to": "client", "y": 840, "label": "TCP frame · snapshot 20 Hz", "variant": "return" },
+    { "from": "client", "to": "godot", "y": 880, "label": "encolar DTO recibido", "variant": "return" },
+    { "from": "client", "to": "godot", "y": 920, "label": "interpolar y dibujar en hilo principal" }
+  ],
+  "activations": [
+    { "participant": "receive", "from": 214, "to": 348, "type": "backend" },
+    { "participant": "loop", "from": 432, "to": 768, "type": "backend" },
+    { "participant": "world", "from": 474, "to": 688, "type": "backend" },
+    { "participant": "updater", "from": 554, "to": 608, "type": "backend" },
+    { "participant": "send", "from": 794, "to": 848, "type": "backend" },
+    { "participant": "godot", "from": 874, "to": 928, "type": "frontend" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Frecuencias", "items": ["Simulación: 60 Hz", "Snapshots: 20 Hz", "Entrada: cambio inmediato y refresco cada 100 ms"] },
+    { "dot": "orange", "title": "Paralelismo final", "items": ["No existe un hilo por enemigo", "El pool calcula sobre datos inmutables", "El GameLoop aplica resultados secuencialmente"] },
+    { "dot": "rose", "title": "Backpressure", "items": ["Canal de entrada y salidas tienen capacidad fija", "El GameLoop nunca escribe al socket", "Un cliente lento se desconecta de forma controlada"] }
+  ]
+}
