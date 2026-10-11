@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "SpaceShooter.Server/1.0.0": {
+        "dependencies": {
+          "SpaceShooter.Shared": "1.0.0"
+        },
+        "runtime": {
+          "SpaceShooter.Server.dll": {}
+        }
+      },
+      "SpaceShooter.Shared/1.0.0": {
+        "runtime": {
+          "SpaceShooter.Shared.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "SpaceShooter.Server/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "SpaceShooter.Shared/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
