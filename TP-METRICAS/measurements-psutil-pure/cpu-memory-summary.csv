@@ -1,0 +1,3 @@
+action,repetitions,concurrency,median_average_cpu_percent_one_core,median_peak_rss_mb,median_requests,total_errors
+concurrent,5,32,73.66666666666667,177.83203125,157902,0
+sequential,5,1,55.303703703703704,177.8203125,170285,0
