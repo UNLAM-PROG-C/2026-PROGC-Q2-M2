@@ -48,3 +48,6 @@ C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Shared\o
 C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\.artifacts\migration-client\SpaceShooter.Shared.deps.json
 C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\.artifacts\migration-client\SpaceShooter.Shared.dll
 C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\.artifacts\migration-client\SpaceShooter.Shared.pdb
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Shared\bin\Debug\net10.0\SpaceShooter.Shared.deps.json
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Shared\bin\Debug\net10.0\SpaceShooter.Shared.dll
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Shared\bin\Debug\net10.0\SpaceShooter.Shared.pdb

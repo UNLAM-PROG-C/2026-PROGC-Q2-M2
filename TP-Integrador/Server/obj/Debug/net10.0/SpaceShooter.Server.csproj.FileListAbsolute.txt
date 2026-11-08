@@ -58,3 +58,10 @@ C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\o
 C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\obj\Debug\net10.0\SpaceShooter.Server.pdb
 C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\obj\Debug\net10.0\SpaceShooter.Server.genruntimeconfig.cache
 C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\obj\Debug\net10.0\ref\SpaceShooter.Server.dll
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Server.exe
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Server.deps.json
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Server.runtimeconfig.json
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Server.dll
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Server.pdb
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Shared.dll
+C:\Users\LENPAD\IdeaProjects\universidad\2026-PROGC-Q2-M2\TP-Integrador\Server\bin\Debug\net10.0\SpaceShooter.Shared.pdb
