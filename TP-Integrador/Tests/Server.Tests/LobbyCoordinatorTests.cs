@@ -105,6 +105,30 @@ public sealed class LobbyCoordinatorTests
   }
 
   [Fact]
+  public void FinishedMatchReturnsPlayersToAnUnreadyLobby()
+  {
+    bool reopened = false;
+    LobbyFixture fixture = new LobbyFixture(matchEnded: () => reopened = true);
+    PlayerId first = fixture.Join(1);
+    PlayerId second = fixture.Join(2);
+    fixture.Ready(first);
+    fixture.Ready(second);
+    fixture.Coordinator.Update(fixture.Now + LobbyCoordinator.DefaultCountdownDuration);
+
+    fixture.Coordinator.OpenRematchLobby();
+
+    Assert.True(reopened);
+    Assert.All(fixture.Registry.Sessions, session =>
+    {
+      Assert.Equal(SessionStatus.InLobby, session.Status);
+      Assert.Null(session.LastInput);
+    });
+    LobbyStatePayload state = Assert.IsType<LobbyStatePayload>(fixture.Broadcasts.Last().Payload);
+    Assert.Null(state.CountdownSeconds);
+    Assert.All(state.Participants, participant => Assert.False(participant.Ready));
+  }
+
+  [Fact]
   public void InputIsAcceptedOnlyForTheOwningPlayingSession()
   {
     LobbyFixture fixture = new LobbyFixture();
@@ -163,6 +187,23 @@ public sealed class LobbyCoordinatorTests
     Assert.Equal(4, admission.TargetPlayers);
   }
 
+  [Fact]
+  public void ReopenedLobbyAcceptsAReplacementForAPlayerWhoLeaves()
+  {
+    LobbyAdmission admission = new LobbyAdmission();
+    PlayerId first = new PlayerId(1);
+    PlayerId second = new PlayerId(2);
+    Assert.True(admission.TryAdmit(first, 2, out _, out _));
+    Assert.True(admission.TryAdmit(second, 2, out _, out _));
+    admission.MarkMatchStarted();
+
+    admission.ReopenLobby();
+    admission.Release(second);
+
+    Assert.True(admission.TryAdmit(new PlayerId(3), 2, out _, out _));
+    Assert.Equal(2, admission.TargetPlayers);
+  }
+
   [Theory]
   [InlineData(1)]
   [InlineData(2)]
@@ -202,12 +243,13 @@ public sealed class LobbyCoordinatorTests
 
     public LobbyCoordinator Coordinator { get; }
 
-    public LobbyFixture(int? requiredPlayers = null)
+    public LobbyFixture(int? requiredPlayers = null, Action? matchEnded = null)
     {
       Coordinator = new LobbyCoordinator(
           Registry,
           Broadcasts.Add,
-          requiredPlayers: requiredPlayers is null ? null : () => requiredPlayers.Value);
+          requiredPlayers: requiredPlayers is null ? null : () => requiredPlayers.Value,
+          matchEnded: matchEnded);
     }
 
     public PlayerId Join(int number)

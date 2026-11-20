@@ -103,13 +103,20 @@ internal sealed class WorldSimulation
     }
 
     State.Wave = 1;
-    SpawnWave(1);
+    BeginWaveTransition(completionBonus: 0);
   }
 
   public void Step(IReadOnlyDictionary<PlayerId, PlayerInput> inputs)
   {
     if (State.MatchStatus is MatchStatus.Won or MatchStatus.Lost)
     {
+      return;
+    }
+
+    if (State.WaveTransitionTicksRemaining > 0)
+    {
+      AdvanceWaveTransition();
+      State.Tick++;
       return;
     }
 
@@ -422,14 +429,54 @@ internal sealed class WorldSimulation
       return;
     }
 
+    int completionBonus = _levelManager.GetLevel(State.Wave).CompletionBonus;
     foreach (Player player in State.Players.Values
                  .Where(player => player.Status != PlayerStatus.Eliminated))
     {
-      player.Score += _levelManager.GetLevel(State.Wave).CompletionBonus;
+      player.Score += completionBonus;
     }
 
     State.Wave++;
+    BeginWaveTransition(completionBonus);
+  }
+
+  private void BeginWaveTransition(int completionBonus)
+  {
+    ClearTransientEntities();
+    State.WaveCompletionBonus = completionBonus;
+    State.WaveTransitionTicksRemaining = WaveTransitionDurationInTicks();
+    if (State.WaveTransitionTicksRemaining == 0)
+    {
+      CompleteWaveTransition();
+    }
+  }
+
+  private void AdvanceWaveTransition()
+  {
+    State.WaveTransitionTicksRemaining--;
+    if (State.WaveTransitionTicksRemaining == 0)
+    {
+      CompleteWaveTransition();
+    }
+  }
+
+  private void CompleteWaveTransition()
+  {
+    State.WaveCompletionBonus = 0;
     SpawnWave(State.Wave);
+  }
+
+  private void ClearTransientEntities()
+  {
+    foreach (ProjectileId projectileId in State.Projectiles.Keys.ToArray())
+    {
+      State.RemoveProjectile(projectileId);
+    }
+
+    foreach (PowerUpId powerUpId in State.PowerUps.Keys.ToArray())
+    {
+      State.RemovePowerUp(powerUpId);
+    }
   }
 
   private void SpawnWave(int wave)
@@ -718,5 +765,10 @@ internal sealed class WorldSimulation
 
   private int DurationInTicks(TimeSpan duration) =>
       Math.Max(1, (int)Math.Ceiling(duration / _config.FixedStep));
+
+  private int WaveTransitionDurationInTicks() =>
+      _config.WaveTransitionDuration == TimeSpan.Zero
+          ? 0
+          : DurationInTicks(_config.WaveTransitionDuration);
 
 }

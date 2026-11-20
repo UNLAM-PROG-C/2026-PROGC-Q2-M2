@@ -61,7 +61,7 @@ public sealed class AuthoritativeMatchTests
   }
 
   [Fact]
-  public void EndedMatchCanResetOnlyAfterEverySessionDisconnects()
+  public void EndedMatchCanResetAfterSessionsReturnToLobby()
   {
     MatchFixture fixture = new MatchFixture(new PlayerId(1), new PlayerId(2));
     fixture.ApplyInput(new PlayerId(1), new InputStatePayload(0, 0, true, 1));
@@ -71,11 +71,12 @@ public sealed class AuthoritativeMatchTests
     }
 
     Assert.False(fixture.Match.TryReset());
-    fixture.Lobby.Apply(new DisconnectSessionCommand(new PlayerId(1)), fixture.Now);
-    fixture.Lobby.Apply(new DisconnectSessionCommand(new PlayerId(2)), fixture.Now);
+    fixture.Lobby.OpenRematchLobby();
 
     Assert.True(fixture.Match.TryReset());
     Assert.False(fixture.Match.IsStarted);
+    Assert.All(fixture.Registry.Sessions, session =>
+        Assert.Equal(SessionStatus.InLobby, session.Status));
   }
 
   private sealed class MatchFixture

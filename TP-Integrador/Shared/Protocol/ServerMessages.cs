@@ -58,7 +58,9 @@ public sealed record WorldSnapshotPayload(
     PowerUpSnapshot[] PowerUps,
     int Wave,
     int? BossHealth,
-    int BossPhase = 0) : IProtocolPayload;
+    int BossPhase = 0,
+    int WaveTransitionRemainingMilliseconds = 0,
+    int WaveCompletionBonus = 0) : IProtocolPayload;
 
 public sealed record GameEventPayload(string EventCode, string? Detail = null) : IProtocolPayload;
 

@@ -14,6 +14,7 @@ public partial class Main : Node2D
     private PlayerId? _localPlayerId;
     private bool _playing;
     private bool _ready;
+    private bool _waveTransition;
     private ScreenController _screens = null!;
 
     public override void _Ready()
@@ -32,7 +33,11 @@ public partial class Main : Node2D
         DrainNetworkMessages();
         if (_playing)
         {
-            _input.Update();
+            if (!_waveTransition)
+            {
+                _input.Update();
+            }
+
             QueueRedraw();
         }
     }
@@ -51,6 +56,8 @@ public partial class Main : Node2D
     {
         _screens.ConnectButton.Pressed += ConnectPressed;
         _screens.ReadyButton.Pressed += ReadyPressed;
+        _screens.ReplayButton.Pressed += ReplayPressed;
+        _screens.ExitButton.Pressed += ExitPressed;
         _screens.ShipSelector.ItemSelected += ShipSelected;
     }
 
@@ -66,7 +73,7 @@ public partial class Main : Node2D
         }
         catch (Exception exception)
         {
-            _screens.SetConnectError($"Retry: {exception.Message}");
+            _screens.SetConnectError($"No se pudo conectar: {exception.Message}");
         }
     }
 
@@ -106,8 +113,10 @@ public partial class Main : Node2D
     private void HandleWelcome(WelcomePayload welcome)
     {
         _localPlayerId = welcome.PlayerId;
+        _ready = false;
         _screens.ShowLobby();
-        string ship = _screens.ShipSelector.GetItemText(_screens.ShipSelector.Selected);
+        _screens.SetReady(ready: false);
+        string ship = ScreenController.GetShipId(_screens.ShipSelector.Selected);
         _ = SendSafelyAsync(new SelectShipPayload(ship));
     }
 
@@ -116,6 +125,11 @@ public partial class Main : Node2D
         _audio.HandleSnapshot(_snapshots.Current, snapshot, _localPlayerId);
         _snapshots.Accept(snapshot, Time.GetTicksMsec());
         _hud.Update(snapshot, _localPlayerId);
+        _waveTransition = snapshot.WaveTransitionRemainingMilliseconds > 0;
+        _screens.SetWaveTransition(
+            snapshot.Wave,
+            snapshot.WaveTransitionRemainingMilliseconds,
+            snapshot.WaveCompletionBonus);
     }
 
     private async void ReadyPressed()
@@ -130,11 +144,32 @@ public partial class Main : Node2D
         await SendSafelyAsync(new SetReadyPayload(_ready));
     }
 
+    private async void ReplayPressed()
+    {
+        if (!_coordinator.IsConnected)
+        {
+            return;
+        }
+
+        _ready = !_ready;
+        _screens.SetRematchReady(_ready);
+        await SendSafelyAsync(new SetReadyPayload(_ready));
+    }
+
+    private async void ExitPressed()
+    {
+        _screens.SetLeaving();
+        await _coordinator.DisconnectAsync("Player returned to the start screen.");
+        ResetClientState();
+        _screens.ShowConnection();
+        QueueRedraw();
+    }
+
     private async void ShipSelected(long index)
     {
         if (_coordinator.IsConnected)
         {
-            string ship = _screens.ShipSelector.GetItemText((int)index);
+            string ship = ScreenController.GetShipId(index);
             await SendSafelyAsync(new SelectShipPayload(ship));
         }
     }
@@ -149,28 +184,45 @@ public partial class Main : Node2D
         {
             _playing = false;
             _screens.ShowConnection();
-            _screens.SetConnectError($"Connection error: {exception.Message}");
+            _screens.SetConnectError($"Error de conexión: {exception.Message}");
         }
     }
 
     private void ShowGame()
     {
+        _snapshots.Clear();
         _playing = true;
+        _ready = false;
+        _waveTransition = false;
+        _screens.SetReady(ready: false);
         _screens.ShowGame();
     }
 
     private void ShowResult(MatchEndedPayload result)
     {
         _playing = false;
+        _ready = false;
+        _waveTransition = false;
         _audio.HandleResult(result);
-        _screens.ShowResult(result);
+        _screens.ShowResult(result, _localPlayerId);
         QueueRedraw();
     }
 
     private void ShowError(ErrorPayload error)
     {
-        _playing = false;
+        ResetClientState();
         _screens.ShowConnection();
         _screens.SetConnectError($"{error.Code}: {error.Description}");
+    }
+
+    private void ResetClientState()
+    {
+        _playing = false;
+        _ready = false;
+        _waveTransition = false;
+        _localPlayerId = null;
+        _snapshots.Clear();
+        _screens.SetReady(ready: false);
+        _screens.SetRematchReady(ready: false);
     }
 }

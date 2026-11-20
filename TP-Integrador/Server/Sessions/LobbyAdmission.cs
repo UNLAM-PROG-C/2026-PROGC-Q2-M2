@@ -72,6 +72,14 @@ public sealed class LobbyAdmission
     }
   }
 
+  public void ReopenLobby()
+  {
+    lock (_sync)
+    {
+      _matchStarted = false;
+    }
+  }
+
   public void Release(PlayerId playerId)
   {
     lock (_sync)

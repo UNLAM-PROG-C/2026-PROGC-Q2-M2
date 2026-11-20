@@ -20,7 +20,7 @@ public sealed class AuthoritativeMatch(
 
   public bool TryReset()
   {
-    if (!IsEnded || sessions.Count != 0)
+    if (!IsEnded || sessions.Sessions.Any(session => session.Status == SessionStatus.Playing))
     {
       return false;
     }
@@ -122,7 +122,9 @@ public sealed class AuthoritativeMatch(
             powerUp.Status)).ToArray(),
         state.Wave,
         state.Enemies.Values.FirstOrDefault(enemy => enemy.Kind == EnemyKind.Boss && enemy.Status == EnemyStatus.Active)?.Health,
-        state.BossPhase);
+        state.BossPhase,
+        WaveTransitionRemainingMilliseconds(state),
+        state.WaveCompletionBonus);
   }
 
   public MatchEndedPayload CreateResult()
@@ -144,5 +146,11 @@ public sealed class AuthoritativeMatch(
   private static PowerUpType[] ActivePowerUps(Player player)
   {
     return [.. player.Effects.Keys.OrderBy(type => type)];
+  }
+
+  private int WaveTransitionRemainingMilliseconds(GameState state)
+  {
+    return (int)Math.Ceiling(
+        state.WaveTransitionTicksRemaining * config.FixedStep.TotalMilliseconds);
   }
 }

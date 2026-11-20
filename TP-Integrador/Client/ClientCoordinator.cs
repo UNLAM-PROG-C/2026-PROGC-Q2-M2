@@ -1,5 +1,6 @@
 using SpaceShooter.Client.Networking;
 using SpaceShooter.Protocol;
+using System.Net.Sockets;
 
 namespace SpaceShooter.Client;
 
@@ -19,9 +20,30 @@ internal sealed class ClientCoordinator : IAsyncDisposable
         await _client.ConnectAsync(host, 7777, playerName, requestedPlayers);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        return _client is null ? ValueTask.CompletedTask : _client.DisposeAsync();
+        await DisposeClientAsync();
+    }
+
+    public async Task DisconnectAsync(string reason)
+    {
+        if (_client is not null)
+        {
+            try
+            {
+                await _client.SendAsync(new LeavePayload(reason));
+            }
+            catch (Exception exception) when (exception is IOException or
+                                                      OperationCanceledException or
+                                                      SocketException or
+                                                      ObjectDisposedException or
+                                                      InvalidOperationException)
+            {
+                // Disconnection is already the requested outcome.
+            }
+        }
+
+        await DisposeClientAsync();
     }
 
     public Task SendAsync(IProtocolPayload payload)

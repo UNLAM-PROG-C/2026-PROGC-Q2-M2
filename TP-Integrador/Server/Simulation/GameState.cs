@@ -31,6 +31,10 @@ internal sealed class GameState
 
   public int Wave { get; internal set; }
 
+  public int WaveCompletionBonus { get; internal set; }
+
+  public int WaveTransitionTicksRemaining { get; internal set; }
+
   internal void AddEnemy(Enemy enemy)
   {
     _enemies.Add(enemy.Id, enemy);

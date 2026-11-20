@@ -236,8 +236,8 @@ public sealed class LobbyServerTests
     Task serverTask = server.RunAsync(shutdown.Token);
     int port = await server.Started.WaitAsync(TimeSpan.FromSeconds(1));
 
-    TestLobbyClient first = await TestLobbyClient.ConnectAsync(port, "First", shutdown.Token);
-    TestLobbyClient second = await TestLobbyClient.ConnectAsync(port, "Second", shutdown.Token);
+    using TestLobbyClient first = await TestLobbyClient.ConnectAsync(port, "First", shutdown.Token);
+    using TestLobbyClient second = await TestLobbyClient.ConnectAsync(port, "Second", shutdown.Token);
     await first.SendAsync(new SetReadyPayload(true), shutdown.Token);
     await second.SendAsync(new SetReadyPayload(true), shutdown.Token);
     MatchStartedPayload firstMatch = await first.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
@@ -245,24 +245,18 @@ public sealed class LobbyServerTests
     await first.SendAsync(new InputStatePayload(0, 0, true, 1), shutdown.Token);
     await first.ReadUntilAsync<MatchEndedPayload>(shutdown.Token);
     await second.ReadUntilAsync<MatchEndedPayload>(shutdown.Token);
-    first.Dispose();
-    second.Dispose();
 
-    await Task.Delay(200, shutdown.Token);
-
-    using TestLobbyClient third = await TestLobbyClient.ConnectAsync(port, "Third", shutdown.Token);
-    using TestLobbyClient fourth = await TestLobbyClient.ConnectAsync(port, "Fourth", shutdown.Token);
-    await third.SendAsync(new SetReadyPayload(true), shutdown.Token);
-    await fourth.SendAsync(new SetReadyPayload(true), shutdown.Token);
-    MatchStartedPayload secondMatch = await third.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
-    await fourth.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
-    await third.SendAsync(new InputStatePayload(0, 0, true, 1), shutdown.Token);
-    MatchEndedPayload thirdResult = await third.ReadUntilAsync<MatchEndedPayload>(shutdown.Token);
-    MatchEndedPayload fourthResult = await fourth.ReadUntilAsync<MatchEndedPayload>(shutdown.Token);
+    await first.SendAsync(new SetReadyPayload(true), shutdown.Token);
+    await second.SendAsync(new SetReadyPayload(true), shutdown.Token);
+    MatchStartedPayload secondMatch = await first.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+    await second.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+    await first.SendAsync(new InputStatePayload(0, 0, true, 2), shutdown.Token);
+    MatchEndedPayload firstResult = await first.ReadUntilAsync<MatchEndedPayload>(shutdown.Token);
+    MatchEndedPayload secondResult = await second.ReadUntilAsync<MatchEndedPayload>(shutdown.Token);
 
     Assert.True(secondMatch.MatchId > firstMatch.MatchId);
-    Assert.True(thirdResult.Victory);
-    Assert.True(fourthResult.Victory);
+    Assert.True(firstResult.Victory);
+    Assert.True(secondResult.Victory);
 
     shutdown.Cancel();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(1));
@@ -318,6 +312,7 @@ public sealed class LobbyServerTests
     {
       CampaignEnabled = true,
       Levels = CreateFastCampaign(),
+      WaveTransitionDuration = TimeSpan.FromMilliseconds(10),
       Wave1EnemyCount = 1,
       Wave2EnemyCount = 1,
       Wave3EnemyCount = 1,

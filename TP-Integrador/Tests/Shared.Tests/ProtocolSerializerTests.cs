@@ -25,7 +25,9 @@ public sealed class ProtocolSerializerTests
             [new(new PowerUpId(1), PowerUpType.Shield, new Vector2D(50, 60), PowerUpStatus.Available)],
             1,
             200,
-            BossPhase: 2)),
+            BossPhase: 2,
+            WaveTransitionRemainingMilliseconds: 2_500,
+            WaveCompletionBonus: 750)),
         new(11, new GameEventPayload("waveStarted", "Wave 1")),
         new(12, new MatchEndedPayload(
             true,

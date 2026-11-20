@@ -23,6 +23,13 @@ internal sealed class SnapshotBuffer
         ReceivedAt = receivedAt;
     }
 
+    public void Clear()
+    {
+        _previous = null;
+        Current = null;
+        ReceivedAt = 0;
+    }
+
     public float GetInterpolationAmount(ulong now)
     {
         return Math.Clamp((now - ReceivedAt) / SnapshotIntervalMilliseconds, 0f, 1f);

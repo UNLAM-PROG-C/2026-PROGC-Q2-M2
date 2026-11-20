@@ -48,6 +48,8 @@ public sealed record SimulationConfig
 
   public IReadOnlyList<LevelConfig> Levels { get; init; } = CampaignLevels.CreateDefault();
 
+  public TimeSpan WaveTransitionDuration { get; init; } = TimeSpan.FromSeconds(3);
+
   public int Wave1EnemyCount { get; init; } = 3;
 
   public int Wave2EnemyCount { get; init; } = 5;
@@ -95,7 +97,8 @@ public sealed record SimulationConfig
         FireCooldown < TimeSpan.Zero || ProjectileSpeed <= 0 || ProjectileRadius < 0 || ProjectileDamage <= 0 ||
         EnemyRadius < 0 || EnemyHealth <= 0 || EnemyCollisionDamage <= 0 || EnemyKillScore < 0 ||
         EnemyProjectileDamage <= 0 || EnemyAttackInterval <= TimeSpan.Zero ||
-        PowerUpRadius < 0 || Wave1EnemyCount <= 0 || Wave2EnemyCount <= 0 || Wave3EnemyCount <= 0 ||
+        PowerUpRadius < 0 || WaveTransitionDuration < TimeSpan.Zero ||
+        Wave1EnemyCount <= 0 || Wave2EnemyCount <= 0 || Wave3EnemyCount <= 0 ||
         DiverHealth <= 0 || TankHealth <= 0 || BossHealth <= 0 || BossKillScore < 0 || WaveBonusScore < 0 ||
         BossAttackDamage <= 0 || BossPhase1AttackInterval <= TimeSpan.Zero || BossPhase2AttackInterval <= TimeSpan.Zero ||
         ScoutSpeed < 0 || DiverSpeed < 0 || TankSpeed < 0 || BossSpeed < 0 || PowerUpFallSpeed < 0 ||

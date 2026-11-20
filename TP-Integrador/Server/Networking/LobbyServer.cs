@@ -51,7 +51,8 @@ public sealed class LobbyServer(
         Broadcast,
         countdownDuration,
         () => admission.TargetPlayers,
-        admission.MarkMatchStarted);
+        admission.MarkMatchStarted,
+        admission.ReopenLobby);
     SimulationConfig config = simulationConfig ?? new SimulationConfig { CampaignEnabled = true };
     IHighScoreStore scoreStore = highScores ?? new InMemoryHighScoreStore();
     AuthoritativeGameLoop gameLoop = new AuthoritativeGameLoop(

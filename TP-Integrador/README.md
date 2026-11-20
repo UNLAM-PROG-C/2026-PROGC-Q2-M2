@@ -78,7 +78,7 @@ El servidor escucha conexiones TCP/IPv4 en el puerto `7777` y permanece activo h
 
 Para jugar desde otras computadoras de la LAN, Windows debe permitir al servidor comunicarse en redes privadas. Si aparece el aviso del firewall al ejecutarlo por primera vez, habilitar el acceso para redes privadas; si no aparece, crear manualmente una regla de entrada para el puerto TCP `7777`. No es necesario abrir el puerto para probar varios clientes con `127.0.0.1` en la misma computadora.
 
-La partida incluye tres oleadas con `Scout`, `Diver` y `Tank`, seguidas por un jefe de dos fases. Los enemigos derrotados generan power-ups de disparo rápido, disparo múltiple y escudo. Al terminar, el servidor actualiza atómicamente `records.json` en la carpeta desde la que fue ejecutado.
+La campaña incluye diez fases con `Scout`, `Diver` y `Tank`, y culmina con un jefe de dos formas de ataque. Antes de cada fase, el servidor pausa el combate durante tres segundos y sincroniza en todos los clientes una presentación con el número de fase, la bonificación obtenida y la cuenta regresiva. Los enemigos derrotados generan distintos power-ups. Al terminar, el servidor actualiza atómicamente `records.json` en la carpeta desde la que fue ejecutado.
 
 ## Ejecutar el cliente
 
@@ -88,6 +88,8 @@ En el lobby, seleccionar una nave y marcar `Ready`. La partida comienza cuando s
 
 - Flechas: movimiento.
 - Espacio: disparo.
+
+Al terminar, cada cliente puede aceptar una revancha sin cerrar la conexión o volver a la pantalla inicial. Una revancha comienza cuando se vuelve a completar el cupo y todos los jugadores conectados están listos. Volver al inicio libera el lugar de ese jugador y permite elegir nuevamente una partida de uno a cuatro participantes.
 
 Los gráficos actuales son placeholders geométricos dibujados por código. Cada cliente interpola los snapshots recibidos y sólo representa el estado confirmado por el servidor.
 
@@ -101,7 +103,3 @@ No utilizar la configuración `Player GDScript` de Rider: el proyecto usa C#.
 - [`Fin de partida y cierre`](docs/diagrams/final-match-end-shutdown.html): ranking, récords, cancelación y liberación de recursos.
 
 Los diagramas representan el objetivo de la Fase 9. Distinguen mediante sus notas lo implementado hasta la Fase 5 de las capacidades todavía planificadas para las Fases 6 a 9.
-
-## Estado actual
-
-Fases 0 a 4 completadas y aprobadas. La Fase 5 está implementada y aprobó sus verificaciones automatizadas; queda pendiente la validación manual del juego completo en Godot.

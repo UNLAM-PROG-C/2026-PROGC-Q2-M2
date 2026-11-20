@@ -11,6 +11,7 @@ public sealed class LobbyCoordinator
   private readonly TimeSpan _countdownDuration;
   private readonly Func<int>? _requiredPlayers;
   private readonly Action? _matchStarted;
+  private readonly Action? _matchEnded;
   private long _outgoingSequence;
   private long _nextMatchId;
   private TimeSpan? _countdownDeadline;
@@ -21,13 +22,15 @@ public sealed class LobbyCoordinator
       Action<ProtocolMessage> broadcast,
       TimeSpan? countdownDuration = null,
       Func<int>? requiredPlayers = null,
-      Action? matchStarted = null)
+      Action? matchStarted = null,
+      Action? matchEnded = null)
   {
     _registry = registry;
     _broadcast = broadcast;
     _countdownDuration = countdownDuration ?? DefaultCountdownDuration;
     _requiredPlayers = requiredPlayers;
     _matchStarted = matchStarted;
+    _matchEnded = matchEnded;
     ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_countdownDuration, TimeSpan.Zero);
   }
 
@@ -47,6 +50,21 @@ public sealed class LobbyCoordinator
   }
 
   public void Update(TimeSpan now) => UpdateCountdown(now, lobbyChanged: false);
+
+  public void OpenRematchLobby()
+  {
+    ClientSession[] sessions = _registry.Sessions.OrderBy(session => session.PlayerId.Value).ToArray();
+    foreach (ClientSession session in sessions)
+    {
+      session.Status = SessionStatus.InLobby;
+      session.LastInput = null;
+    }
+
+    _countdownDeadline = null;
+    _lastPublishedCountdown = null;
+    _matchEnded?.Invoke();
+    BroadcastLobby(sessions, countdownSeconds: null);
+  }
 
   private bool ApplyJoin(JoinSessionCommand command)
   {

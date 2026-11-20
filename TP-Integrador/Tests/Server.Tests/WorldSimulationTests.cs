@@ -190,12 +190,58 @@ public sealed class WorldSimulationTests
   }
 
   [Fact]
+  public void CampaignTransitionFreezesCombatAndClearsTransientEntities()
+  {
+    SimulationConfig config = CreateConfig() with
+    {
+      CampaignEnabled = true,
+      Levels = CreateFastCampaign(),
+      WaveTransitionDuration = TimeSpan.FromMilliseconds(300),
+    };
+    WorldSimulation simulation = new WorldSimulation(config, new SeededRandomSource(1));
+    Player player = simulation.AddPlayer(new Vector2D(50, 90));
+    Dictionary<PlayerId, PlayerInput> input = new()
+    {
+      [player.Id] = new(new Vector2D(1, 0), Fire: true),
+    };
+
+    simulation.StartCampaign();
+
+    Assert.Equal(1, simulation.State.Wave);
+    Assert.Equal(3, simulation.State.WaveTransitionTicksRemaining);
+    Assert.Empty(ActiveEnemies(simulation));
+
+    simulation.Step(input);
+    simulation.Step(input);
+
+    Assert.Equal(new Vector2D(50, 90), player.Position);
+    Assert.Empty(simulation.State.Projectiles);
+    Assert.Empty(ActiveEnemies(simulation));
+
+    simulation.Step(input);
+
+    Assert.NotEmpty(ActiveEnemies(simulation));
+    Assert.Equal(0, simulation.State.WaveTransitionTicksRemaining);
+
+    simulation.AddPowerUp(PowerUpType.Shield, new Vector2D(10, 10));
+    DestroyActiveEnemies(simulation, player.Id);
+    simulation.Step(new Dictionary<PlayerId, PlayerInput>());
+
+    Assert.Equal(2, simulation.State.Wave);
+    Assert.Equal(3, simulation.State.WaveTransitionTicksRemaining);
+    Assert.Equal(config.Levels[0].CompletionBonus, simulation.State.WaveCompletionBonus);
+    Assert.Empty(simulation.State.PowerUps);
+    Assert.Empty(ActiveEnemies(simulation));
+  }
+
+  [Fact]
   public void CampaignAdvancesThroughTenLevelsAndTwoBossPhases()
   {
     SimulationConfig config = CreateConfig() with
     {
       CampaignEnabled = true,
       Levels = CreateFastCampaign(),
+      WaveTransitionDuration = TimeSpan.Zero,
       BossHealth = 20,
       ScoutSpeed = 0,
       DiverSpeed = 0,

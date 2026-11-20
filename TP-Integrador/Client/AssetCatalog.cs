@@ -19,6 +19,8 @@ internal static class AssetCatalog
 
     public static Texture2D Background { get; } = LoadTexture($"{Root}/Background/space.png");
 
+    public static Font InterfaceFont { get; } = GD.Load<Font>($"{Root}/Fonts/kenvector-future.ttf");
+
     public static AudioStream LaserSound { get; } = LoadAudio($"{Root}/Audio/laser.ogg");
 
     public static AudioStream LoseSound { get; } = LoadAudio($"{Root}/Audio/lose.ogg");
@@ -43,6 +45,19 @@ internal static class AssetCatalog
     public static Texture2D GetPlayer(PlayerId id)
     {
         int index = Math.Abs(id.Value - 1) % PlayerShips.Length;
+        return PlayerShips[index];
+    }
+
+    public static Texture2D GetShip(string shipId)
+    {
+        int index = shipId switch
+        {
+            "blue" => 0,
+            "red" => 1,
+            "green" => 2,
+            "gold" => 3,
+            _ => 0,
+        };
         return PlayerShips[index];
     }
 

@@ -52,6 +52,7 @@ public sealed class AuthoritativeGameLoop(
             ScoreEntry[] records = await highScores.UpdateAsync(result.Ranking, cancellationToken);
             broadcast(CreateMessage(result with { Records = records }));
             resultPublished = true;
+            lobby.OpenRematchLobby();
           }
 
           continue;
