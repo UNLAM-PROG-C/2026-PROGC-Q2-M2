@@ -15,6 +15,8 @@ public partial class Main : Node2D
     private bool _playing;
     private bool _ready;
     private bool _waveTransition;
+    private bool _isPaused;
+    private bool _pauseTransitionInProgress;
     private ScreenController _screens = null!;
 
     public override void _Ready()
@@ -31,9 +33,15 @@ public partial class Main : Node2D
     {
         _ = delta;
         DrainNetworkMessages();
+
         if (_playing)
-        {
-            if (!_waveTransition)
+{
+            if (Input.IsActionJustPressed("pause"))
+            {
+                TogglePause();
+            }
+
+            if (!_waveTransition && !_isPaused)
             {
                 _input.Update();
             }
@@ -56,9 +64,12 @@ public partial class Main : Node2D
     {
         _screens.ConnectButton.Pressed += ConnectPressed;
         _screens.ReadyButton.Pressed += ReadyPressed;
+        _screens.LobbyExitButton.Pressed += ExitLobbyPressed;
         _screens.ReplayButton.Pressed += ReplayPressed;
         _screens.ExitButton.Pressed += ExitPressed;
         _screens.ShipSelector.ItemSelected += ShipSelected;
+        _screens.PauseExitButton.Pressed += OnPauseExitPressed;
+        _screens.ResumeButton.Pressed += ResumePressed;
     }
 
     private async void ConnectPressed()
@@ -144,6 +155,14 @@ public partial class Main : Node2D
         await SendSafelyAsync(new SetReadyPayload(_ready));
     }
 
+    private async void ExitLobbyPressed()
+    {
+        await _coordinator.DisconnectAsync("Player returned to the start screen.");
+        ResetClientState();
+        _screens.ShowConnection();
+        QueueRedraw();
+    }
+
     private async void ReplayPressed()
     {
         if (!_coordinator.IsConnected)
@@ -171,6 +190,88 @@ public partial class Main : Node2D
         {
             string ship = ScreenController.GetShipId(index);
             await SendSafelyAsync(new SelectShipPayload(ship));
+        }
+    }
+
+    private async void TogglePause()
+    {
+        if (_pauseTransitionInProgress || !_playing)
+            return;
+
+        _pauseTransitionInProgress = true;
+
+        try
+        {
+            if (_isPaused)
+            {
+                ResumeGame();
+            }
+            else
+            {
+                await PauseGameAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            _isPaused = false;
+            _input.Resume();
+
+            _screens.HidePause();
+            _screens.ShowConnection();
+            _screens.SetConnectError(
+                $"Error al pausar la partida: {exception.Message}");
+        }
+        finally
+        {
+            _pauseTransitionInProgress = false;
+        }
+    }
+
+    private async Task PauseGameAsync()
+    {
+        if (_isPaused || !_playing)
+            return;
+
+        await _input.PauseAsync();
+
+        // La partida pudo haber terminado mientras esperábamos.
+        if (!_playing)
+            return;
+
+        _isPaused = true;
+        _screens.ShowPause();
+    }
+
+    private void ResumeGame()
+    {
+        if (!_isPaused)
+            return;
+
+        _isPaused = false;
+
+        _screens.HidePause();
+        _input.Resume();
+    }
+
+    private void ResumePressed()
+    {
+        ResumeGame();
+    }
+
+    private async void OnPauseExitPressed()
+    {
+        _input.Disable();
+        _playing = false;
+
+        try
+        {
+            await _coordinator.DisconnectAsync("Player left the match");
+        }
+        finally
+        {
+            ResetClientState();
+            _screens.ShowConnection();
+            QueueRedraw();
         }
     }
 
@@ -203,8 +304,10 @@ public partial class Main : Node2D
         _playing = false;
         _ready = false;
         _waveTransition = false;
+        _isPaused = false;
         _audio.HandleResult(result);
         _screens.ShowResult(result, _localPlayerId);
+        _input.Enable();
         QueueRedraw();
     }
 
@@ -220,9 +323,12 @@ public partial class Main : Node2D
         _playing = false;
         _ready = false;
         _waveTransition = false;
+        _isPaused = false;
         _localPlayerId = null;
+
         _snapshots.Clear();
         _screens.SetReady(ready: false);
         _screens.SetRematchReady(ready: false);
+        _input.Enable();
     }
 }

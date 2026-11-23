@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SpaceShooterLAN")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6bafb5e0ad0faa66fc53b497402eaa41976bbcad")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cc4817a858c4ea0b8e95382834d22fe822008f66")]
 [assembly: System.Reflection.AssemblyProductAttribute("SpaceShooterLAN")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SpaceShooterLAN")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

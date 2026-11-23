@@ -35,6 +35,8 @@ internal sealed class ScreenController
     private readonly Label _waveTransitionSubtitle;
     private readonly Label _waveTransitionTimer;
     private readonly Label _waveTransitionTitle;
+    private readonly Control _pauseScreen;
+    private readonly ColorRect _pauseShade;
 
     public ScreenController(Node owner)
     {
@@ -56,6 +58,7 @@ internal sealed class ScreenController
         (_hudPanel, _hudLabel) = BuildHud(layer);
         (_waveTransitionScreen, _waveTransitionShade, _waveTransitionTitle, _waveTransitionSubtitle,
             _waveBonusLabel, _waveTransitionTimer) = BuildWaveTransition(layer);
+        (_pauseScreen, _pauseShade, ResumeButton, PauseExitButton) = BuildPauseScreen(layer);
     }
 
     public Button ConnectButton { get; private set; } = null!;
@@ -70,7 +73,13 @@ internal sealed class ScreenController
 
     public Button ReadyButton { get; private set; } = null!;
 
+    public Button LobbyExitButton { get; private set; } = null!;
+
     public Button ReplayButton { get; private set; } = null!;
+
+    public Button ResumeButton { get; private set; } = null!;
+    
+    public Button PauseExitButton { get; private set; } = null!;
 
     public OptionButton ShipSelector { get; private set; } = null!;
 
@@ -131,6 +140,7 @@ internal sealed class ScreenController
     public void SetReady(bool ready)
     {
         ReadyButton.Text = ready ? "CANCELAR LISTO" : "ESTOY LISTO";
+        LobbyExitButton.Disabled = ready;
     }
 
     public void SetRematchReady(bool ready)
@@ -142,6 +152,19 @@ internal sealed class ScreenController
         _rematchStatusLabel.AddThemeColorOverride(
             "font_color",
             ready ? InterfaceStyles.Success : InterfaceStyles.MutedText);
+    }
+
+    public void ShowPause()
+    {
+        _pauseShade.Visible = true;
+        _pauseScreen.Visible = true;
+        ResumeButton.GrabFocus();
+    }
+
+    public void HidePause()
+    {
+        _pauseScreen.Visible = false;
+        _pauseShade.Visible = false;
     }
 
     public void ShowConnection()
@@ -299,6 +322,12 @@ internal sealed class ScreenController
         ReadyButton = new Button { Text = "ESTOY LISTO" };
         InterfaceStyles.ApplyButton(ReadyButton, primary: true);
         content.AddChild(Center(ReadyButton));
+
+        LobbyExitButton = new Button { Text = "DESCONECTARSE" };
+        InterfaceStyles.ApplyButton(LobbyExitButton);
+        content.AddChild(Center(LobbyExitButton));
+
+
         return (screen, lobby);
     }
 
@@ -403,6 +432,36 @@ internal sealed class ScreenController
         screen.Visible = false;
         shade.Visible = false;
         return (screen, shade, title, subtitle, bonus, timer);
+    }
+
+    private static (Control Screen, ColorRect Shade, Button Resume, Button Exit)
+        BuildPauseScreen(CanvasLayer layer)
+    {
+        ColorRect shade = new()
+        {
+            Color = new Color(0.005f, 0.015f, 0.04f, 0.78f),
+        };
+
+        FillParent(shade);
+        layer.AddChild(shade);
+
+        (Control screen, VBoxContainer content) =
+            CreateScreen(layer, "Pause", new Vector2(560f, 360f));
+
+        AddHeader(content, "PAUSA", "LA MISIÓN ESTÁ EN CURSO");
+
+        Button resume = new() { Text = "REANUDAR" };
+        InterfaceStyles.ApplyButton(resume, primary: true);
+        content.AddChild(Center(resume));
+
+        Button exit = new() { Text = "SALIR DE LA PARTIDA" };
+        InterfaceStyles.ApplyButton(exit);
+        content.AddChild(Center(exit));
+
+        screen.Visible = false;
+        shade.Visible = false;
+
+        return (screen, shade, resume, exit);
     }
 
     private static (Control Screen, VBoxContainer Content) CreateScreen(
@@ -518,5 +577,7 @@ internal sealed class ScreenController
         _screenShade.Visible = !hud;
         _waveTransitionScreen.Visible = false;
         _waveTransitionShade.Visible = false;
+        _pauseScreen.Visible = false;
+        _pauseShade.Visible = false;
     }
 }

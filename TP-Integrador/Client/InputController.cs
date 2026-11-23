@@ -12,11 +12,19 @@ internal sealed class InputController(ClientCoordinator coordinator)
     private bool _sendInFlight;
     private InputStatePayload? _lastInput;
     private ulong _lastSentAt;
+    private bool _enabled = true;
+    private Task _sendTask = Task.CompletedTask;
 
     public void Update()
     {
+        if (!_enabled)
+        {
+            return;
+        }
+
         InputStatePayload input = Capture();
         ulong now = Time.GetTicksMsec();
+
         if (_sendInFlight || ShouldSuppress(input, now))
         {
             return;
@@ -25,7 +33,8 @@ internal sealed class InputController(ClientCoordinator coordinator)
         _lastInput = input;
         _lastSentAt = now;
         _sendInFlight = true;
-        _ = SendAsync(input);
+
+        _sendTask = SendAsync(input);
     }
 
     private static InputStatePayload Capture()
@@ -55,5 +64,38 @@ internal sealed class InputController(ClientCoordinator coordinator)
     private bool ShouldSuppress(InputStatePayload input, ulong now)
     {
         return input == _lastInput && now - _lastSentAt < ResendIntervalMilliseconds;
+    }
+
+    public async Task PauseAsync()
+    {
+        _enabled = false;
+
+        // Esperamos a que termine el envío que ya estaba en curso.
+        await _sendTask;
+
+        // Enviamos un estado neutral al servidor.
+        InputStatePayload neutral = new(
+            0f,
+            0f,
+            false,
+            (long)Time.GetTicksMsec());
+
+        await coordinator.SendAsync(neutral);
+    }
+
+    public void Resume()
+    {
+        _lastInput = null;
+        _enabled = true;
+    }
+
+    public void Enable()
+    {
+        _enabled = true;
+    }
+
+    public void Disable()
+    {
+        _enabled = false;
     }
 }
