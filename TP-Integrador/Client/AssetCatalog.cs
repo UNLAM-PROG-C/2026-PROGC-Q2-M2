@@ -61,6 +61,29 @@ internal static class AssetCatalog
         return PlayerShips[index];
     }
 
+    public static Color GetShipColor(string shipId)
+    {
+        return shipId switch
+        {
+            "red" => new Color("ef5350"),
+            "green" => new Color("66bb6a"),
+            "gold" => new Color("ffca28"),
+            _ => new Color("42a5f5"),
+        };
+    }
+
+    public static Color GetEnemyColor(EnemyKind kind)
+    {
+        return kind switch
+        {
+            EnemyKind.Scout => new Color("42a5c6"),
+            EnemyKind.Diver => new Color("7da35a"),
+            EnemyKind.Tank => new Color("8b789b"),
+            EnemyKind.Boss => new Color("d45b35"),
+            _ => Colors.White,
+        };
+    }
+
     public static Texture2D GetPowerUp(PowerUpType type)
     {
         string name = type switch

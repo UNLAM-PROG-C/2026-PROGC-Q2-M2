@@ -61,6 +61,22 @@ public sealed class AuthoritativeMatchTests
   }
 
   [Fact]
+  public void SnapshotIncludesSelectedShipAndProjectileOwner()
+  {
+    MatchFixture fixture = new MatchFixture(new PlayerId(1));
+    fixture.Registry.Sessions.Single().ShipId = "red";
+    fixture.ApplyInput(new PlayerId(1), new InputStatePayload(0, 0, true, 1));
+
+    fixture.Match.Step();
+
+    WorldSnapshotPayload snapshot = fixture.Match.CreateSnapshot();
+    Assert.Equal("red", Assert.Single(snapshot.Players).ShipId);
+    Assert.Equal(
+        new EntityKey(EntityType.Player, 1),
+        Assert.Single(snapshot.Projectiles).Owner);
+  }
+
+  [Fact]
   public void EndedMatchCanResetAfterSessionsReturnToLobby()
   {
     MatchFixture fixture = new MatchFixture(new PlayerId(1), new PlayerId(2));

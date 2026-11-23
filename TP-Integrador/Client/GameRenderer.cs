@@ -55,7 +55,7 @@ internal static class GameRenderer
     {
         Vector2 position = ToGodot(snapshots.Interpolate(player, amount));
         Rect2 destination = CenteredRect(position, new Vector2(48f, 36f));
-        canvas.DrawTextureRect(AssetCatalog.GetPlayer(player.Id), destination, false);
+        canvas.DrawTextureRect(AssetCatalog.GetShip(player.ShipId), destination, false);
         DrawPlayerIndicators(canvas, player, localPlayerId, position);
     }
 
@@ -96,9 +96,32 @@ internal static class GameRenderer
         foreach (ProjectileSnapshot projectile in projectiles)
         {
             Vector2 position = ToGodot(snapshots.Interpolate(projectile, amount));
+            Color color = ProjectileColor(projectile, snapshots.Current);
+            if (projectile.Owner.EntityType == EntityType.Enemy)
+            {
+                canvas.DrawCircle(position, 6f, color);
+                continue;
+            }
+
             Rect2 destination = CenteredRect(position, new Vector2(8f, 20f));
-            canvas.DrawTextureRect(AssetCatalog.Projectile, destination, false);
+            canvas.DrawTextureRect(AssetCatalog.Projectile, destination, false, color);
         }
+    }
+
+    private static Color ProjectileColor(
+        ProjectileSnapshot projectile,
+        WorldSnapshotPayload snapshot)
+    {
+        if (projectile.Owner.EntityType == EntityType.Player)
+        {
+            PlayerSnapshot? player = snapshot.Players.FirstOrDefault(
+                candidate => candidate.Id.Value == projectile.Owner.Value);
+            return AssetCatalog.GetShipColor(player?.ShipId ?? "blue");
+        }
+
+        EnemySnapshot? enemy = snapshot.Enemies.FirstOrDefault(
+            candidate => candidate.Id.Value == projectile.Owner.Value);
+        return enemy is null ? Colors.White : AssetCatalog.GetEnemyColor(enemy.Kind);
     }
 
     private static void DrawPowerUps(Node2D canvas, WorldSnapshotPayload snapshot)

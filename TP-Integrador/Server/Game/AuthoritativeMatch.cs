@@ -128,7 +128,7 @@ public sealed class AuthoritativeMatch(
     return new PlayerInput(new Vector2D(input.Horizontal, input.Vertical), input.Fire);
   }
 
-  private static PlayerSnapshot[] CreatePlayerSnapshots(GameState state)
+  private PlayerSnapshot[] CreatePlayerSnapshots(GameState state)
   {
     return state.Players.Values
         .OrderBy(player => player.Id.Value)
@@ -142,8 +142,10 @@ public sealed class AuthoritativeMatch(
         enemy => enemy.Kind == EnemyKind.Boss && enemy.Status == EnemyStatus.Active)?.Health;
   }
 
-  private static PlayerSnapshot CreatePlayerSnapshot(Player player)
+  private PlayerSnapshot CreatePlayerSnapshot(Player player)
   {
+    string shipId = sessions.Sessions
+        .FirstOrDefault(session => session.PlayerId == player.Id)?.ShipId ?? "blue";
     return new PlayerSnapshot(
         player.Id,
         player.Position,
@@ -151,7 +153,8 @@ public sealed class AuthoritativeMatch(
         player.Lives,
         player.Shield,
         player.Score,
-        ActivePowerUps(player));
+        ActivePowerUps(player),
+        shipId);
   }
 
   private static EnemySnapshot[] CreateEnemySnapshots(GameState state)
@@ -169,7 +172,8 @@ public sealed class AuthoritativeMatch(
         .Select(projectile => new ProjectileSnapshot(
             projectile.Id,
             projectile.Position,
-            projectile.Status))
+            projectile.Status,
+            projectile.OwnerKey))
         .ToArray();
   }
 

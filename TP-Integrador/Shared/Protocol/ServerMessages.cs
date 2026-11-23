@@ -34,9 +34,10 @@ public sealed record PlayerSnapshot(
     Vector2D Position,
     PlayerStatus Status,
     int Lives,
-  bool Shield,
+    bool Shield,
     int Score,
-    PowerUpType[]? ActivePowerUps = null);
+    PowerUpType[]? ActivePowerUps = null,
+    string ShipId = "blue");
 
 public sealed record EnemySnapshot(
     EnemyId Id,
@@ -47,7 +48,8 @@ public sealed record EnemySnapshot(
 public sealed record ProjectileSnapshot(
     ProjectileId Id,
     Vector2D Position,
-    ProjectileStatus Status);
+    ProjectileStatus Status,
+    EntityKey Owner = default);
 
 public sealed record PowerUpSnapshot(
     PowerUpId Id,

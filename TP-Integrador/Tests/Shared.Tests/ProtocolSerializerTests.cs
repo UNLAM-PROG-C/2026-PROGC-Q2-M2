@@ -19,9 +19,9 @@ public sealed class ProtocolSerializerTests
         new(9, new MatchStartedPayload(100, 42, 1)),
         new(10, new WorldSnapshotPayload(
             12,
-      [new(new PlayerId(1), new Vector2D(10, 20), PlayerStatus.Active, 3, true, 100, [PowerUpType.Shield])],
+      [new(new PlayerId(1), new Vector2D(10, 20), PlayerStatus.Active, 3, true, 100, [PowerUpType.Shield], "green")],
             [new(new EnemyId(1), EnemyKind.Scout, new Vector2D(30, 40), EnemyStatus.Active)],
-            [new(new ProjectileId(1), new Vector2D(10, 15), ProjectileStatus.Active)],
+            [new(new ProjectileId(1), new Vector2D(10, 15), ProjectileStatus.Active, new EntityKey(EntityType.Player, 1))],
             [new(new PowerUpId(1), PowerUpType.Shield, new Vector2D(50, 60), PowerUpStatus.Available)],
             1,
             200,
