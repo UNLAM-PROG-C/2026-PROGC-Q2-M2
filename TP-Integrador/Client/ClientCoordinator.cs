@@ -1,6 +1,6 @@
+using System.Net.Sockets;
 using SpaceShooter.Client.Networking;
 using SpaceShooter.Protocol;
-using System.Net.Sockets;
 
 namespace SpaceShooter.Client;
 
@@ -9,66 +9,75 @@ namespace SpaceShooter.Client;
 /// </summary>
 internal sealed class ClientCoordinator : IAsyncDisposable
 {
-    private LanClient? _client;
+  private const int ServerPort = 7777;
+  private LanClient? _client;
 
-    public bool IsConnected => _client?.IsConnected == true;
+  public bool IsConnected => _client?.IsConnected == true;
 
-    public async Task ConnectAsync(string host, string playerName, int requestedPlayers)
+  public async Task ConnectAsync(string host, string playerName, int requestedPlayers)
+  {
+    await DisposeClientAsync();
+    _client = new LanClient();
+    await _client.ConnectAsync(host, ServerPort, playerName, requestedPlayers);
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    await DisposeClientAsync();
+  }
+
+  public async Task DisconnectAsync(string reason)
+  {
+    await TrySendLeaveAsync(reason);
+    await DisposeClientAsync();
+  }
+
+  public Task SendAsync(IProtocolPayload payload)
+  {
+    return _client?.SendAsync(payload) ?? Task.CompletedTask;
+  }
+
+  public bool TryDequeue(out IProtocolPayload? payload)
+  {
+    if (_client?.TryDequeue(out IProtocolPayload? received) == true)
     {
-        await DisposeClientAsync();
-        _client = new LanClient();
-        await _client.ConnectAsync(host, 7777, playerName, requestedPlayers);
+      payload = received;
+      return true;
     }
 
-    public async ValueTask DisposeAsync()
+    payload = null;
+    return false;
+  }
+
+  private async Task TrySendLeaveAsync(string reason)
+  {
+    if (_client is null)
     {
-        await DisposeClientAsync();
+      return;
     }
 
-    public async Task DisconnectAsync(string reason)
+    try
     {
-        if (_client is not null)
-        {
-            try
-            {
-                await _client.SendAsync(new LeavePayload(reason));
-            }
-            catch (Exception exception) when (exception is IOException or
-                                                      OperationCanceledException or
-                                                      SocketException or
-                                                      ObjectDisposedException or
-                                                      InvalidOperationException)
-            {
-                // Disconnection is already the requested outcome.
-            }
-        }
-
-        await DisposeClientAsync();
+      await _client.SendAsync(new LeavePayload(reason));
     }
-
-    public Task SendAsync(IProtocolPayload payload)
+    catch (Exception exception) when (IsExpectedDisconnect(exception))
     {
-        return _client?.SendAsync(payload) ?? Task.CompletedTask;
+      // The requested outcome is already a disconnected client.
     }
+  }
 
-    public bool TryDequeue(out IProtocolPayload? payload)
+  private static bool IsExpectedDisconnect(Exception exception)
+  {
+    return exception is IOException or OperationCanceledException or SocketException or
+        ObjectDisposedException or InvalidOperationException;
+  }
+
+  private async Task DisposeClientAsync()
+  {
+    if (_client is not null)
     {
-        if (_client?.TryDequeue(out IProtocolPayload? received) == true)
-        {
-            payload = received;
-            return true;
-        }
-
-        payload = null;
-        return false;
+      await _client.DisposeAsync();
+      _client = null;
     }
-
-    private async Task DisposeClientAsync()
-    {
-        if (_client is not null)
-        {
-            await _client.DisposeAsync();
-            _client = null;
-        }
-    }
+  }
 }

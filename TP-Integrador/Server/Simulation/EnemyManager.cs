@@ -17,7 +17,7 @@ internal sealed class EnemyManager(
       float speed,
       TimeSpan? attackInterval)
   {
-    Hitbox hitbox = new(Vector2D.Zero, new CircleShape(config.EnemyRadius));
+    Hitbox hitbox = CreateHitbox(kind);
     Enemy enemy = factory.CreateEnemy(kind, position, speed, hitbox, health);
     if (enemy is IShooter && attackInterval is not null)
     {
@@ -37,19 +37,66 @@ internal sealed class EnemyManager(
     enemy.SetVelocity(velocity);
     enemy.Position += velocity * elapsedSeconds;
     ClampHorizontalPosition(enemy);
-    return enemy.Position.Y > config.WorldBounds.MaxY - config.EnemyRadius;
+    return enemy.Position.Y > config.WorldBounds.MaxY - VerticalMargin(enemy.Kind);
+  }
+
+  public Vector2D ClampSpawn(EnemyKind kind, Vector2D position)
+  {
+    if (kind != EnemyKind.Boss)
+    {
+      return config.WorldBounds.Clamp(position, config.EnemyRadius);
+    }
+
+    float x = Math.Clamp(
+        position.X,
+        config.WorldBounds.MinX + HorizontalMargin(kind),
+        config.WorldBounds.MaxX - HorizontalMargin(kind));
+    float y = Math.Clamp(
+        position.Y,
+        config.WorldBounds.MinY + VerticalMargin(kind),
+        config.WorldBounds.MaxY - VerticalMargin(kind));
+    return new Vector2D(x, y);
+  }
+
+  public Vector2D CreateTopSpawn(EnemyKind kind, float x)
+  {
+    return new Vector2D(x, config.WorldBounds.MinY + VerticalMargin(kind));
+  }
+
+  public void ResetAtTop(Enemy enemy)
+  {
+    enemy.Position = CreateTopSpawn(enemy.Kind, enemy.Position.X);
   }
 
   private void ClampHorizontalPosition(Enemy enemy)
   {
-    float minimum = config.WorldBounds.MinX + config.EnemyRadius;
-    float maximum = config.WorldBounds.MaxX - config.EnemyRadius;
+    float margin = HorizontalMargin(enemy.Kind);
+    float minimum = config.WorldBounds.MinX + margin;
+    float maximum = config.WorldBounds.MaxX - margin;
     enemy.Position = new Vector2D(Math.Clamp(enemy.Position.X, minimum, maximum), enemy.Position.Y);
   }
 
   private int DurationInTicks(TimeSpan duration)
   {
     return Math.Max(1, (int)Math.Ceiling(duration / config.FixedStep));
+  }
+
+  private Hitbox CreateHitbox(EnemyKind kind)
+  {
+    CollisionShape shape = kind == EnemyKind.Boss
+        ? new RectangleShape(config.BossHitboxWidth, config.BossHitboxHeight)
+        : new CircleShape(config.EnemyRadius);
+    return new Hitbox(Vector2D.Zero, shape);
+  }
+
+  private float HorizontalMargin(EnemyKind kind)
+  {
+    return kind == EnemyKind.Boss ? config.BossHitboxWidth / 2f : config.EnemyRadius;
+  }
+
+  private float VerticalMargin(EnemyKind kind)
+  {
+    return kind == EnemyKind.Boss ? config.BossHitboxHeight / 2f : config.EnemyRadius;
   }
 
   private static Vector2D VelocityFor(Enemy enemy, float direction, float bossMultiplier)

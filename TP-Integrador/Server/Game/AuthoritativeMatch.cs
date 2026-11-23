@@ -46,23 +46,8 @@ public sealed class AuthoritativeMatch(
     }
 
     _simulation = new WorldSimulation(config, random);
-    for (int index = 0; index < playingSessions.Length; index++)
-    {
-      float x = config.WorldBounds.MaxX * (index + 1) / (playingSessions.Length + 1);
-      float y = config.PlayerBounds.MaxY - config.PlayerRadius - 20;
-      _simulation.AddPlayer(playingSessions[index].PlayerId, new Vector2D(x, y));
-    }
-
-    if (config.CampaignEnabled)
-    {
-      _simulation.StartCampaign();
-    }
-    else
-    {
-      Player firstPlayer = _simulation.State.Players.Values.OrderBy(player => player.Id.Value).First();
-      _simulation.AddEnemy(EnemyKind.Scout, new Vector2D(firstPlayer.Position.X, 140));
-    }
-
+    AddPlayers(playingSessions);
+    StartScenario();
     return true;
   }
 
@@ -73,24 +58,8 @@ public sealed class AuthoritativeMatch(
       return;
     }
 
-    HashSet<PlayerId> activeSessionIds = sessions.Sessions
-        .Where(session => session.Status == SessionStatus.Playing)
-        .Select(session => session.PlayerId)
-        .ToHashSet();
-    foreach (PlayerId playerId in _simulation.State.Players.Keys.Where(id => !activeSessionIds.Contains(id)).ToArray())
-    {
-      _simulation.RemovePlayer(playerId);
-    }
-
-    Dictionary<PlayerId, PlayerInput> inputs = sessions.Sessions
-        .Where(session => session.Status == SessionStatus.Playing && session.LastInput is not null)
-        .ToDictionary(
-            session => session.PlayerId,
-            session => new PlayerInput(
-                new Vector2D(session.LastInput!.Horizontal, session.LastInput.Vertical),
-                session.LastInput.Fire));
-
-    _simulation.Step(inputs);
+    RemoveDisconnectedPlayers();
+    _simulation.Step(CreateInputs());
   }
 
   public WorldSnapshotPayload CreateSnapshot()
@@ -98,33 +67,122 @@ public sealed class AuthoritativeMatch(
     GameState state = _simulation?.State ?? throw new InvalidOperationException("The match has not started.");
     return new WorldSnapshotPayload(
         state.Tick,
-        state.Players.Values.OrderBy(player => player.Id.Value).Select(player => new PlayerSnapshot(
-            player.Id,
-            player.Position,
-            player.Status,
-            player.Lives,
-            player.Shield,
-            player.Score,
-            ActivePowerUps(player))).ToArray(),
-        state.Enemies.Values.OrderBy(enemy => enemy.Id.Value).Select(enemy => new EnemySnapshot(
-            enemy.Id,
-            enemy.Kind,
-            enemy.Position,
-            enemy.Status)).ToArray(),
-        state.Projectiles.Values.OrderBy(projectile => projectile.Id.Value).Select(projectile => new ProjectileSnapshot(
-            projectile.Id,
-            projectile.Position,
-            projectile.Status)).ToArray(),
-        state.PowerUps.Values.OrderBy(powerUp => powerUp.Id.Value).Select(powerUp => new PowerUpSnapshot(
-            powerUp.Id,
-            powerUp.Kind,
-            powerUp.Position,
-            powerUp.Status)).ToArray(),
+        CreatePlayerSnapshots(state),
+        CreateEnemySnapshots(state),
+        CreateProjectileSnapshots(state),
+        CreatePowerUpSnapshots(state),
         state.Wave,
-        state.Enemies.Values.FirstOrDefault(enemy => enemy.Kind == EnemyKind.Boss && enemy.Status == EnemyStatus.Active)?.Health,
+        ActiveBossHealth(state),
         state.BossPhase,
         WaveTransitionRemainingMilliseconds(state),
         state.WaveCompletionBonus);
+  }
+
+  private void AddPlayers(ClientSession[] playingSessions)
+  {
+    for (int index = 0; index < playingSessions.Length; index++)
+    {
+      float x = config.WorldBounds.MaxX * (index + 1) / (playingSessions.Length + 1);
+      float y = config.PlayerBounds.MaxY - config.PlayerRadius - 20;
+      _simulation!.AddPlayer(playingSessions[index].PlayerId, new Vector2D(x, y));
+    }
+  }
+
+  private void StartScenario()
+  {
+    if (config.CampaignEnabled)
+    {
+      _simulation!.StartCampaign();
+      return;
+    }
+
+    Player first = _simulation!.State.Players.Values.OrderBy(player => player.Id.Value).First();
+    _simulation.AddEnemy(EnemyKind.Scout, new Vector2D(first.Position.X, 140));
+  }
+
+  private void RemoveDisconnectedPlayers()
+  {
+    HashSet<PlayerId> activeIds = sessions.Sessions
+        .Where(session => session.Status == SessionStatus.Playing)
+        .Select(session => session.PlayerId)
+        .ToHashSet();
+    PlayerId[] disconnected = _simulation!.State.Players.Keys
+        .Where(id => !activeIds.Contains(id))
+        .ToArray();
+    foreach (PlayerId playerId in disconnected)
+    {
+      _simulation.RemovePlayer(playerId);
+    }
+  }
+
+  private Dictionary<PlayerId, PlayerInput> CreateInputs()
+  {
+    return sessions.Sessions
+        .Where(session => session.Status == SessionStatus.Playing && session.LastInput is not null)
+        .ToDictionary(session => session.PlayerId, CreateInput);
+  }
+
+  private static PlayerInput CreateInput(ClientSession session)
+  {
+    InputStatePayload input = session.LastInput!;
+    return new PlayerInput(new Vector2D(input.Horizontal, input.Vertical), input.Fire);
+  }
+
+  private static PlayerSnapshot[] CreatePlayerSnapshots(GameState state)
+  {
+    return state.Players.Values
+        .OrderBy(player => player.Id.Value)
+        .Select(CreatePlayerSnapshot)
+        .ToArray();
+  }
+
+  private static int? ActiveBossHealth(GameState state)
+  {
+    return state.Enemies.Values.FirstOrDefault(
+        enemy => enemy.Kind == EnemyKind.Boss && enemy.Status == EnemyStatus.Active)?.Health;
+  }
+
+  private static PlayerSnapshot CreatePlayerSnapshot(Player player)
+  {
+    return new PlayerSnapshot(
+        player.Id,
+        player.Position,
+        player.Status,
+        player.Lives,
+        player.Shield,
+        player.Score,
+        ActivePowerUps(player));
+  }
+
+  private static EnemySnapshot[] CreateEnemySnapshots(GameState state)
+  {
+    return state.Enemies.Values
+        .OrderBy(enemy => enemy.Id.Value)
+        .Select(enemy => new EnemySnapshot(enemy.Id, enemy.Kind, enemy.Position, enemy.Status))
+        .ToArray();
+  }
+
+  private static ProjectileSnapshot[] CreateProjectileSnapshots(GameState state)
+  {
+    return state.Projectiles.Values
+        .OrderBy(projectile => projectile.Id.Value)
+        .Select(projectile => new ProjectileSnapshot(
+            projectile.Id,
+            projectile.Position,
+            projectile.Status))
+        .ToArray();
+  }
+
+  private static PowerUpSnapshot[] CreatePowerUpSnapshots(GameState state)
+  {
+    return state.PowerUps.Values
+        .OrderBy(powerUp => powerUp.Id.Value)
+        .Select(powerUp => new PowerUpSnapshot(
+            powerUp.Id,
+            powerUp.Kind,
+            powerUp.Position,
+            powerUp.Status))
+        .ToArray();
   }
 
   public MatchEndedPayload CreateResult()

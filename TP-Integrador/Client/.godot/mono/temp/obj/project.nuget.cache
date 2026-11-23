@@ -1,12 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "p0m/uZQcGDw=",
+  "dgSpecHash": "pxa3yBIfWxY=",
   "success": true,
-  "projectFilePath": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Client\\SpaceShooterLAN.csproj",
+  "projectFilePath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Client\\SpaceShooterLAN.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\Usuario\\.nuget\\packages\\godot.sourcegenerators\\4.6.0\\godot.sourcegenerators.4.6.0.nupkg.sha512",
-    "C:\\Users\\Usuario\\.nuget\\packages\\godotsharp\\4.6.0\\godotsharp.4.6.0.nupkg.sha512",
-    "C:\\Users\\Usuario\\.nuget\\packages\\godotsharpeditor\\4.6.0\\godotsharpeditor.4.6.0.nupkg.sha512"
+    "C:\\Users\\LENPAD\\.nuget\\packages\\godot.sourcegenerators\\4.6.0\\godot.sourcegenerators.4.6.0.nupkg.sha512",
+    "C:\\Users\\LENPAD\\.nuget\\packages\\godotsharp\\4.6.0\\godotsharp.4.6.0.nupkg.sha512",
+    "C:\\Users\\LENPAD\\.nuget\\packages\\godotsharpeditor\\4.6.0\\godotsharpeditor.4.6.0.nupkg.sha512"
   ],
   "logs": []
 }

@@ -7,35 +7,33 @@ using SpaceShooter.Transport;
 
 namespace SpaceShooter.Server.Networking;
 
+/// <summary>
+/// Owns one client socket and bridges validated messages to the command channel.
+/// </summary>
 public sealed class SessionConnection(
     TcpClient client,
     PlayerId playerId,
     SessionCommandChannel commands,
     LobbyAdmission admission) : IDisposable
 {
+  private const int OutgoingCapacity = 16;
   private const long PingId = 1;
-  private readonly object _lifecycleLock = new();
   private readonly CancellationTokenSource _disconnect = new();
-  private readonly Channel<ProtocolMessage> _outgoing = Channel.CreateBounded<ProtocolMessage>(
-      new BoundedChannelOptions(16)
-      {
-        SingleReader = true,
-        SingleWriter = false,
-        FullMode = BoundedChannelFullMode.Wait,
-        AllowSynchronousContinuations = false,
-      });
+  private readonly object _lifecycleLock = new();
+  private readonly Channel<ProtocolMessage> _outgoing = CreateOutgoingChannel();
+  private bool _disposed;
+  private int _handshakeComplete;
+  private long _outgoingSequence;
 
   public PlayerId PlayerId { get; } = playerId;
 
-  private long _outgoingSequence;
-  private int _handshakeComplete;
-
   public bool CanReceiveBroadcasts => Volatile.Read(ref _handshakeComplete) == 1;
 
-  public bool TrySend(ProtocolMessage message) => _outgoing.Writer.TryWrite(
-      new ProtocolMessage(Interlocked.Increment(ref _outgoingSequence), message.Payload));
-
-  private bool _disposed;
+  public bool TrySend(ProtocolMessage message)
+  {
+    long sequence = Interlocked.Increment(ref _outgoingSequence);
+    return _outgoing.Writer.TryWrite(new ProtocolMessage(sequence, message.Payload));
+  }
 
   public void Disconnect()
   {
@@ -57,115 +55,215 @@ public sealed class SessionConnection(
         return;
       }
 
-      _disposed = true;
-      _disconnect.Cancel();
-      client.Dispose();
-      _disconnect.Dispose();
+      DisposeResources();
     }
   }
 
+  /// <summary>Runs handshake, command production, and outgoing delivery for this socket.</summary>
+  /// <param name="serverCancellation">Stops the connection during server shutdown.</param>
+  /// <returns>A task representing the complete socket lifetime.</returns>
   public async Task RunAsync(CancellationToken serverCancellation)
   {
-    using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(
-        serverCancellation,
-        _disconnect.Token);
-    CancellationToken cancellationToken = cancellation.Token;
+    using CancellationTokenSource linked = CreateLinkedCancellation(serverCancellation);
+    CancellationToken cancellationToken = linked.Token;
     NetworkStream stream = client.GetStream();
     Task sendTask = SendLoopAsync(stream, cancellationToken);
     bool admitted = false;
-
     try
     {
-      ProtocolMessage? helloMessage = await ReadMessageAsync(stream, cancellationToken);
-      if (helloMessage?.Payload is not HelloPayload hello)
+      HandshakeResult? handshake = await PerformHandshakeAsync(stream, cancellationToken);
+      admitted = handshake is not null;
+      if (handshake is not null)
       {
-        throw new ProtocolException(ProtocolError.UnexpectedMessage, "Hello must be the first message of a connection.");
+        await RegisterAndReceiveAsync(stream, handshake, cancellationToken);
       }
-
-      if (!admission.TryAdmit(
-              PlayerId,
-              hello.RequestedPlayers,
-              out string? errorCode,
-              out string? errorDescription))
-      {
-        TrySend(new ProtocolMessage(1, new ErrorPayload(errorCode, errorDescription)));
-        return;
-      }
-
-      admitted = true;
-
-      if (!TrySend(new ProtocolMessage(
-              1,
-              new WelcomePayload(PlayerId, MinimumPlayers: 1, MaximumPlayers: 4, ProtocolVersion.Current))) ||
-          !TrySend(new ProtocolMessage(
-              2,
-              new PingPayload(PingId, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))))
-      {
-        throw new ProtocolException(ProtocolError.UnexpectedMessage, "A bounded connection queue is full.");
-      }
-
-      Volatile.Write(ref _handshakeComplete, 1);
-      if (!commands.TryEnqueue(new JoinSessionCommand(PlayerId, helloMessage.Sequence, hello)))
-      {
-        throw new ProtocolException(ProtocolError.UnexpectedMessage, "The bounded input channel is full.");
-      }
-
-      await ReceiveLoopAsync(stream, helloMessage.Sequence, cancellationToken);
     }
     finally
     {
-      if (admitted)
-      {
-        commands.TryEnqueue(new DisconnectSessionCommand(PlayerId));
-        admission.Release(PlayerId);
-      }
+      await CompleteAsync(admitted, sendTask, serverCancellation, cancellationToken);
+    }
+  }
 
-      _outgoing.Writer.TryComplete();
+  private static Channel<ProtocolMessage> CreateOutgoingChannel()
+  {
+    BoundedChannelOptions options = new(OutgoingCapacity)
+    {
+      SingleReader = true,
+      SingleWriter = false,
+      FullMode = BoundedChannelFullMode.Wait,
+      AllowSynchronousContinuations = false,
+    };
+    return Channel.CreateBounded<ProtocolMessage>(options);
+  }
 
-      try
+  private CancellationTokenSource CreateLinkedCancellation(CancellationToken serverCancellation)
+  {
+    return CancellationTokenSource.CreateLinkedTokenSource(serverCancellation, _disconnect.Token);
+  }
+
+  private async Task<HandshakeResult?> PerformHandshakeAsync(
+      Stream stream,
+      CancellationToken cancellationToken)
+  {
+    ProtocolMessage? message = await ReadMessageAsync(stream, cancellationToken);
+    HelloPayload hello = ValidateHello(message);
+    if (!TryAdmit(hello, out ErrorPayload? error))
+    {
+      QueueError(error!);
+      return null;
+    }
+
+    QueueGreeting();
+    Volatile.Write(ref _handshakeComplete, 1);
+    return new HandshakeResult(message!.Sequence, hello);
+  }
+
+  private static HelloPayload ValidateHello(ProtocolMessage? message)
+  {
+    if (message?.Payload is HelloPayload hello)
+    {
+      return hello;
+    }
+
+    throw new ProtocolException(
+        ProtocolError.UnexpectedMessage,
+        "Hello must be the first message of a connection.");
+  }
+
+  private bool TryAdmit(HelloPayload hello, out ErrorPayload? error)
+  {
+    bool accepted = admission.TryAdmit(
+        PlayerId,
+        hello.RequestedPlayers,
+        out string errorCode,
+        out string errorDescription);
+    error = accepted ? null : new ErrorPayload(errorCode, errorDescription);
+    return accepted;
+  }
+
+  private void QueueError(ErrorPayload error)
+  {
+    if (!TrySend(new ProtocolMessage(1, error)))
+    {
+      throw QueueFullException("connection output");
+    }
+  }
+
+  private void QueueGreeting()
+  {
+    WelcomePayload welcome = new(PlayerId, 1, 4, ProtocolVersion.Current);
+    PingPayload ping = new(PingId, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+    if (!TrySend(new ProtocolMessage(1, welcome)) || !TrySend(new ProtocolMessage(2, ping)))
+    {
+      throw QueueFullException("connection output");
+    }
+  }
+
+  private async Task RegisterAndReceiveAsync(
+      Stream stream,
+      HandshakeResult handshake,
+      CancellationToken cancellationToken)
+  {
+    JoinSessionCommand join = new(PlayerId, handshake.Sequence, handshake.Hello);
+    await commands.EnqueueAsync(join, cancellationToken);
+    await ReceiveLoopAsync(stream, handshake.Sequence, cancellationToken);
+  }
+
+  private async Task ReceiveLoopAsync(
+      Stream stream,
+      long lastSequence,
+      CancellationToken cancellationToken)
+  {
+    IncomingSequence sequence = new(lastSequence);
+    while (!cancellationToken.IsCancellationRequested)
+    {
+      ProtocolMessage? message = await ReadMessageAsync(stream, cancellationToken);
+      if (message is null || !await HandleMessageAsync(message, sequence, cancellationToken))
       {
-        await sendTask;
-      }
-      catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-      {
-        // Cancellation is owned by the connection or server.
+        return;
       }
     }
   }
 
-  private async Task ReceiveLoopAsync(Stream stream, long lastSequence, CancellationToken cancellationToken)
+  private async Task<bool> HandleMessageAsync(
+      ProtocolMessage message,
+      IncomingSequence sequence,
+      CancellationToken cancellationToken)
   {
-    IncomingSequence incomingSequence = new IncomingSequence(lastSequence);
-    while (!cancellationToken.IsCancellationRequested)
+    if (!sequence.TryAccept(message.Sequence))
     {
-      ProtocolMessage? message = await ReadMessageAsync(stream, cancellationToken);
-      if (message is null)
-      {
-        return;
-      }
+      return true;
+    }
 
-      if (!incomingSequence.TryAccept(message.Sequence))
-      {
-        continue;
-      }
-      switch (message.Payload)
-      {
-        case PingResponsePayload response when response.PingId == PingId:
-          continue;
-        case LeavePayload:
-          return;
-        case SelectShipPayload or SetReadyPayload or InputStatePayload:
-          if (!commands.TryEnqueue(new ClientPayloadCommand(PlayerId, message.Sequence, message.Payload)))
-          {
-            return;
-          }
+    return await DispatchPayloadAsync(message, cancellationToken);
+  }
 
-          break;
-        default:
-          throw new ProtocolException(
-              ProtocolError.UnexpectedMessage,
-              $"Message '{message.Type}' is not valid from a connected client.");
-      }
+  private async Task<bool> DispatchPayloadAsync(
+      ProtocolMessage message,
+      CancellationToken cancellationToken)
+  {
+    if (message.Payload is PingResponsePayload response && response.PingId == PingId)
+    {
+      return true;
+    }
+
+    if (message.Payload is LeavePayload)
+    {
+      return false;
+    }
+
+    await EnqueueClientPayloadAsync(message, cancellationToken);
+    return true;
+  }
+
+  private async Task EnqueueClientPayloadAsync(
+      ProtocolMessage message,
+      CancellationToken cancellationToken)
+  {
+    if (message.Payload is not (SelectShipPayload or SetReadyPayload or SetPausePayload or InputStatePayload))
+    {
+      throw new ProtocolException(
+          ProtocolError.UnexpectedMessage,
+          $"Message '{message.Type}' is not valid from a connected client.");
+    }
+
+    ClientPayloadCommand command = new(PlayerId, message.Sequence, message.Payload);
+    await commands.EnqueueAsync(command, cancellationToken);
+  }
+
+  private async Task CompleteAsync(
+      bool admitted,
+      Task sendTask,
+      CancellationToken serverCancellation,
+      CancellationToken connectionCancellation)
+  {
+    if (admitted)
+    {
+      await QueueDisconnectAsync(serverCancellation);
+      admission.Release(PlayerId);
+    }
+
+    _outgoing.Writer.TryComplete();
+    await AwaitSendLoopAsync(sendTask, connectionCancellation);
+  }
+
+  private async Task QueueDisconnectAsync(CancellationToken serverCancellation)
+  {
+    if (!serverCancellation.IsCancellationRequested)
+    {
+      await commands.EnqueueAsync(new DisconnectSessionCommand(PlayerId), serverCancellation);
+    }
+  }
+
+  private static async Task AwaitSendLoopAsync(Task sendTask, CancellationToken cancellationToken)
+  {
+    try
+    {
+      await sendTask;
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      // Connection cancellation owns the send loop shutdown.
     }
   }
 
@@ -173,10 +271,8 @@ public sealed class SessionConnection(
   {
     await foreach (ProtocolMessage message in _outgoing.Reader.ReadAllAsync(cancellationToken))
     {
-      await LengthPrefixedFrame.WriteAsync(
-          stream,
-          ProtocolSerializer.Serialize(message),
-          cancellationToken);
+      byte[] payload = ProtocolSerializer.Serialize(message);
+      await LengthPrefixedFrame.WriteAsync(stream, payload, cancellationToken);
     }
   }
 
@@ -187,4 +283,21 @@ public sealed class SessionConnection(
     byte[]? payload = await LengthPrefixedFrame.ReadAsync(stream, cancellationToken);
     return payload is null ? null : ProtocolSerializer.Deserialize(payload);
   }
+
+  private static ProtocolException QueueFullException(string queueName)
+  {
+    return new ProtocolException(
+        ProtocolError.UnexpectedMessage,
+        $"The bounded {queueName} queue is full.");
+  }
+
+  private void DisposeResources()
+  {
+    _disposed = true;
+    _disconnect.Cancel();
+    client.Dispose();
+    _disconnect.Dispose();
+  }
+
+  private sealed record HandshakeResult(long Sequence, HelloPayload Hello);
 }

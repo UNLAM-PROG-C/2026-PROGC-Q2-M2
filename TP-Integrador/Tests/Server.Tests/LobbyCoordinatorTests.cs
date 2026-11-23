@@ -160,6 +160,22 @@ public sealed class LobbyCoordinatorTests
   }
 
   [Fact]
+  public async Task AsyncEnqueueWaitsUntilCapacityIsAvailable()
+  {
+    SessionCommandChannel channel = new(capacity: 1);
+    channel.TryEnqueue(new DisconnectSessionCommand(new PlayerId(1)));
+    ValueTask pending = channel.EnqueueAsync(
+        new DisconnectSessionCommand(new PlayerId(2)),
+        CancellationToken.None);
+
+    Assert.False(pending.IsCompleted);
+    Assert.True(channel.Reader.TryRead(out _));
+    await pending;
+    Assert.True(channel.Reader.TryRead(out SessionCommand? command));
+    Assert.IsType<DisconnectSessionCommand>(command);
+  }
+
+  [Fact]
   public void DuplicateAndOutOfOrderSequencesAreRejected()
   {
     IncomingSequence sequence = new IncomingSequence(initialSequence: 5);

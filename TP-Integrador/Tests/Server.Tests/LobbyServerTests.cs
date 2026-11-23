@@ -150,6 +150,128 @@ public sealed class LobbyServerTests
   }
 
   [Fact]
+  public async Task PauseRequestFreezesAuthoritativeTickUntilOwnerResumes()
+  {
+    using CancellationTokenSource shutdown = new(TimeSpan.FromSeconds(5));
+    using LobbyServer server = new(
+        IPAddress.Loopback,
+        0,
+        TextWriter.Null,
+        countdownDuration: TimeSpan.FromMilliseconds(20),
+        simulationConfig: new SimulationConfig());
+    Task serverTask = server.RunAsync(shutdown.Token);
+    int port = await server.Started.WaitAsync(TimeSpan.FromSeconds(1));
+    using TestLobbyClient client = await TestLobbyClient.ConnectAsync(
+        port,
+        "Solo",
+        shutdown.Token,
+        requestedPlayers: 1);
+    await client.SendAsync(new SetReadyPayload(true), shutdown.Token);
+    await client.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+    await client.ReadUntilAsync<WorldSnapshotPayload>(shutdown.Token);
+
+    await client.SendAsync(new SetPausePayload(true), shutdown.Token);
+    PauseStatePayload paused = await client.ReadUntilAsync<PauseStatePayload>(shutdown.Token);
+    await Task.Delay(150, shutdown.Token);
+    await client.SendAsync(new SetPausePayload(false), shutdown.Token);
+    PauseStatePayload resumed = await client.ReadUntilAsync<PauseStatePayload>(shutdown.Token);
+    WorldSnapshotPayload advanced = await client.ReadUntilAsync<WorldSnapshotPayload>(shutdown.Token);
+
+    Assert.True(paused.Paused);
+    Assert.Equal(client.PlayerId, paused.PausedBy?.Value);
+    Assert.False(resumed.Paused);
+    Assert.Null(resumed.PausedBy);
+    Assert.Equal(paused.ServerTick, resumed.ServerTick);
+    Assert.True(advanced.ServerTick > resumed.ServerTick);
+
+    shutdown.Cancel();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(1));
+  }
+
+  [Fact]
+  public async Task AnotherPlayerCannotResumePauseOwnedByFirstPlayer()
+  {
+    using CancellationTokenSource shutdown = new(TimeSpan.FromSeconds(5));
+    using LobbyServer server = new(
+        IPAddress.Loopback,
+        0,
+        TextWriter.Null,
+        countdownDuration: TimeSpan.FromMilliseconds(20),
+        simulationConfig: new SimulationConfig());
+    Task serverTask = server.RunAsync(shutdown.Token);
+    int port = await server.Started.WaitAsync(TimeSpan.FromSeconds(1));
+    using TestLobbyClient first = await TestLobbyClient.ConnectAsync(port, "First", shutdown.Token);
+    using TestLobbyClient second = await TestLobbyClient.ConnectAsync(port, "Second", shutdown.Token);
+    await first.SendAsync(new SetReadyPayload(true), shutdown.Token);
+    await second.SendAsync(new SetReadyPayload(true), shutdown.Token);
+    await first.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+    await second.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+    await first.ReadUntilAsync<WorldSnapshotPayload>(shutdown.Token);
+
+    await first.SendAsync(new SetPausePayload(true), shutdown.Token);
+    PauseStatePayload pausedForFirst = await first.ReadUntilAsync<PauseStatePayload>(shutdown.Token);
+    await second.ReadUntilAsync<PauseStatePayload>(shutdown.Token);
+    await second.SendAsync(new SetPausePayload(false), shutdown.Token);
+    PauseStatePayload stillPaused = await second.ReadUntilAsync<PauseStatePayload>(shutdown.Token);
+
+    Assert.True(stillPaused.Paused);
+    Assert.Equal(first.PlayerId, stillPaused.PausedBy?.Value);
+    Assert.Equal(pausedForFirst.ServerTick, stillPaused.ServerTick);
+
+    await first.SendAsync(new SetPausePayload(false), shutdown.Token);
+    PauseStatePayload resumed = await first.ReadUntilAsync<PauseStatePayload>(
+        state => !state.Paused,
+        shutdown.Token);
+    Assert.False(resumed.Paused);
+
+    shutdown.Cancel();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(1));
+  }
+
+  [Fact]
+  public async Task DisconnectingPauseOwnerAutomaticallyResumesMatch()
+  {
+    using CancellationTokenSource shutdown = new(TimeSpan.FromSeconds(5));
+    using LobbyServer server = new(
+        IPAddress.Loopback,
+        0,
+        TextWriter.Null,
+        countdownDuration: TimeSpan.FromMilliseconds(20),
+        simulationConfig: new SimulationConfig());
+    Task serverTask = server.RunAsync(shutdown.Token);
+    int port = await server.Started.WaitAsync(TimeSpan.FromSeconds(1));
+    TestLobbyClient first = await TestLobbyClient.ConnectAsync(port, "First", shutdown.Token);
+    using TestLobbyClient second = await TestLobbyClient.ConnectAsync(port, "Second", shutdown.Token);
+    try
+    {
+      await first.SendAsync(new SetReadyPayload(true), shutdown.Token);
+      await second.SendAsync(new SetReadyPayload(true), shutdown.Token);
+      await first.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+      await second.ReadUntilAsync<MatchStartedPayload>(shutdown.Token);
+      await first.SendAsync(new SetPausePayload(true), shutdown.Token);
+      PauseStatePayload paused = await second.ReadUntilAsync<PauseStatePayload>(shutdown.Token);
+
+      first.Dispose();
+      PauseStatePayload resumed = await second.ReadUntilAsync<PauseStatePayload>(
+          state => !state.Paused,
+          shutdown.Token);
+      WorldSnapshotPayload advanced = await second.ReadUntilAsync<WorldSnapshotPayload>(
+          snapshot => snapshot.ServerTick > resumed.ServerTick,
+          shutdown.Token);
+
+      Assert.Equal(first.PlayerId, paused.PausedBy?.Value);
+      Assert.Null(resumed.PausedBy);
+      Assert.True(advanced.ServerTick > resumed.ServerTick);
+    }
+    finally
+    {
+      first.Dispose();
+      shutdown.Cancel();
+      await serverTask.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+  }
+
+  [Fact]
   public async Task FourPlayingClientsReceiveWorldContainingAllPlayers()
   {
     using CancellationTokenSource shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(5));

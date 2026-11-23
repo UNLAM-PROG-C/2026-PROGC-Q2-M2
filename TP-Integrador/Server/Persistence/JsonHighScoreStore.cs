@@ -25,20 +25,7 @@ public sealed class JsonHighScoreStore(string path, TextWriter? output = null) :
     try
     {
       List<ScoreEntry> records = await LoadCoreAsync(cancellationToken);
-      foreach (ScoreEntry score in scores)
-      {
-        int index = records.FindIndex(record =>
-                    string.Equals(record.PlayerName, score.PlayerName, StringComparison.OrdinalIgnoreCase));
-        if (index < 0)
-        {
-          records.Add(score);
-        }
-        else if (score.Score > records[index].Score)
-        {
-          records[index] = score;
-        }
-      }
-
+      MergeScores(records, scores);
       ScoreEntry[] ranked = InMemoryHighScoreStore.Rank(records);
       await SaveCoreAsync(ranked, cancellationToken);
       return ranked;
@@ -46,6 +33,32 @@ public sealed class JsonHighScoreStore(string path, TextWriter? output = null) :
     finally
     {
       _gate.Release();
+    }
+  }
+
+  private static void MergeScores(
+      List<ScoreEntry> records,
+      IReadOnlyCollection<ScoreEntry> scores)
+  {
+    foreach (ScoreEntry score in scores)
+    {
+      MergeScore(records, score);
+    }
+  }
+
+  private static void MergeScore(List<ScoreEntry> records, ScoreEntry score)
+  {
+    int index = records.FindIndex(record => string.Equals(
+        record.PlayerName,
+        score.PlayerName,
+        StringComparison.OrdinalIgnoreCase));
+    if (index < 0)
+    {
+      records.Add(score);
+    }
+    else if (score.Score > records[index].Score)
+    {
+      records[index] = score;
     }
   }
 
@@ -64,22 +77,34 @@ public sealed class JsonHighScoreStore(string path, TextWriter? output = null) :
 
     try
     {
-      await using FileStream stream = new FileStream(
-          _path,
-          FileMode.Open,
-          FileAccess.Read,
-          FileShare.Read,
-          4096,
-          FileOptions.Asynchronous | FileOptions.SequentialScan);
+      await using FileStream stream = OpenReadStream();
       return await JsonSerializer.DeserializeAsync<List<ScoreEntry>>(stream, Options, cancellationToken) ?? [];
     }
     catch (JsonException exception)
     {
-      string backupPath = $"{_path}.invalid-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
-      File.Copy(_path, backupPath);
-      await _output.WriteLineAsync($"Invalid records file preserved at '{backupPath}': {exception.Message}");
+      await PreserveInvalidFileAsync(exception);
       return [];
     }
+  }
+
+  private FileStream OpenReadStream()
+  {
+    const int BufferSize = 4096;
+    return new FileStream(
+        _path,
+        FileMode.Open,
+        FileAccess.Read,
+        FileShare.Read,
+        BufferSize,
+        FileOptions.Asynchronous | FileOptions.SequentialScan);
+  }
+
+  private async Task PreserveInvalidFileAsync(JsonException exception)
+  {
+    string backupPath = $"{_path}.invalid-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+    File.Copy(_path, backupPath);
+    await _output.WriteLineAsync(
+        $"Invalid records file preserved at '{backupPath}': {exception.Message}");
   }
 
   private async Task SaveCoreAsync(ScoreEntry[] records, CancellationToken cancellationToken)
@@ -89,18 +114,7 @@ public sealed class JsonHighScoreStore(string path, TextWriter? output = null) :
     string temporaryPath = _path + ".tmp";
     try
     {
-      await using (FileStream stream = new FileStream(
-                       temporaryPath,
-                       FileMode.Create,
-                       FileAccess.Write,
-                       FileShare.None,
-                       4096,
-                       FileOptions.Asynchronous))
-      {
-        await JsonSerializer.SerializeAsync(stream, records, Options, cancellationToken);
-        await stream.FlushAsync(cancellationToken);
-      }
-
+      await WriteTemporaryFileAsync(temporaryPath, records, cancellationToken);
       File.Move(temporaryPath, _path, overwrite: true);
     }
     finally
@@ -110,5 +124,22 @@ public sealed class JsonHighScoreStore(string path, TextWriter? output = null) :
         File.Delete(temporaryPath);
       }
     }
+  }
+
+  private static async Task WriteTemporaryFileAsync(
+      string path,
+      ScoreEntry[] records,
+      CancellationToken cancellationToken)
+  {
+    const int BufferSize = 4096;
+    await using FileStream stream = new(
+        path,
+        FileMode.Create,
+        FileAccess.Write,
+        FileShare.None,
+        BufferSize,
+        FileOptions.Asynchronous);
+    await JsonSerializer.SerializeAsync(stream, records, Options, cancellationToken);
+    await stream.FlushAsync(cancellationToken);
   }
 }

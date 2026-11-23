@@ -10,6 +10,8 @@ public sealed record SelectShipPayload(string ShipId) : IProtocolPayload;
 
 public sealed record SetReadyPayload(bool Ready) : IProtocolPayload;
 
+public sealed record SetPausePayload(bool Paused) : IProtocolPayload;
+
 public sealed record InputStatePayload(
     float Horizontal,
     float Vertical,

@@ -11,6 +11,9 @@ using SpaceShooter.Transport;
 
 namespace SpaceShooter.Server.Networking;
 
+/// <summary>
+/// Accepts bounded client connections and owns the authoritative server lifetime.
+/// </summary>
 public sealed class LobbyServer(
     IPAddress address,
     int port,
@@ -20,84 +23,38 @@ public sealed class LobbyServer(
     IHighScoreStore? highScores = null) : IDisposable
 {
   private const int MaximumConnections = 4;
-  private readonly TcpListener _listener = new(address, port);
-  private readonly TextWriter _output = output;
-  private readonly SemaphoreSlim _connectionSlots = new(MaximumConnections, MaximumConnections);
   private readonly ConcurrentDictionary<PlayerId, SessionConnection> _connections = new();
+  private readonly SemaphoreSlim _connectionSlots = new(MaximumConnections, MaximumConnections);
+  private readonly LobbyAdmission _admission = new();
+  private readonly TcpListener _listener = new(address, port);
   private readonly SessionCommandChannel _commands = new();
-  private readonly TaskCompletionSource<int> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+  private readonly TextWriter _output = output;
+  private readonly TaskCompletionSource<int> _started = new(
+      TaskCreationOptions.RunContinuationsAsynchronously);
   private int _nextPlayerId;
 
   public Task<int> Started => _started.Task;
 
   public void Dispose()
   {
-    _listener.Stop();
-    foreach (SessionConnection connection in _connections.Values)
-    {
-      connection.Disconnect();
-    }
-
+    StopListenerAndConnections();
     _connectionSlots.Dispose();
   }
 
+  /// <summary>Runs connection acceptance and the authoritative game loop.</summary>
+  /// <param name="cancellationToken">Stops the listener and all owned connections.</param>
+  /// <returns>A task representing the server lifetime.</returns>
   public async Task RunAsync(CancellationToken cancellationToken)
   {
-    List<Task> connectionTasks = new List<Task>();
-    SessionRegistry registry = new SessionRegistry();
-    LobbyAdmission admission = new LobbyAdmission();
-    LobbyCoordinator coordinator = new LobbyCoordinator(
-        registry,
-        Broadcast,
-        countdownDuration,
-        () => admission.TargetPlayers,
-        admission.MarkMatchStarted,
-        admission.ReopenLobby);
-    SimulationConfig config = simulationConfig ?? new SimulationConfig { CampaignEnabled = true };
-    IHighScoreStore scoreStore = highScores ?? new InMemoryHighScoreStore();
-    AuthoritativeGameLoop gameLoop = new AuthoritativeGameLoop(
-        _commands,
-        coordinator,
-        new AuthoritativeMatch(registry, config, new SeededRandomSource(1)),
-        config,
-        new StopwatchGameClock(),
-        Broadcast,
-        scoreStore);
-    Task gameLoopTask = gameLoop.RunAsync(cancellationToken);
-
+    List<Task> connectionTasks = [];
+    Task gameLoopTask = CreateGameLoop().RunAsync(cancellationToken);
     try
     {
-      _listener.Start();
-      int boundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
-      _started.TrySetResult(boundPort);
-      await _output.WriteLineAsync($"Lobby server listening on 0.0.0.0:{boundPort}.");
-
-      while (!cancellationToken.IsCancellationRequested)
-      {
-        TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken);
-        client.NoDelay = true;
-
-        if (!_connectionSlots.Wait(0, cancellationToken))
-        {
-          await RejectFullServerAsync(client, cancellationToken);
-          continue;
-        }
-
-        PlayerId playerId = new PlayerId(Interlocked.Increment(ref _nextPlayerId));
-        SessionConnection connection = new SessionConnection(client, playerId, _commands, admission);
-        if (!_connections.TryAdd(playerId, connection))
-        {
-          connection.Dispose();
-          _connectionSlots.Release();
-          continue;
-        }
-
-        connectionTasks.Add(RunConnectionSafelyAsync(connection, cancellationToken));
-      }
+      await ListenAsync(connectionTasks, cancellationToken);
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
-      // Cancellation is the expected shutdown path.
+      // Server cancellation is the expected shutdown path.
     }
     catch (Exception exception)
     {
@@ -106,31 +63,102 @@ public sealed class LobbyServer(
     }
     finally
     {
-      _listener.Stop();
-      foreach (SessionConnection connection in _connections.Values)
-      {
-        connection.Disconnect();
-      }
-
-      await Task.WhenAll(connectionTasks);
-      _commands.Complete();
-      await gameLoopTask;
+      await ShutdownAsync(connectionTasks, gameLoopTask);
     }
+  }
+
+  private AuthoritativeGameLoop CreateGameLoop()
+  {
+    SessionRegistry registry = new();
+    LobbyCoordinator coordinator = CreateCoordinator(registry, _admission);
+    SimulationConfig config = simulationConfig ?? new SimulationConfig { CampaignEnabled = true };
+    IHighScoreStore scoreStore = highScores ?? new InMemoryHighScoreStore();
+    AuthoritativeMatch match = new(registry, config, new SeededRandomSource(1));
+    MatchPauseController pause = new(registry, Broadcast);
+    return new AuthoritativeGameLoop(
+        _commands,
+        coordinator,
+        match,
+        pause,
+        config,
+        new StopwatchGameClock(),
+        Broadcast,
+        scoreStore);
+  }
+
+  private LobbyCoordinator CreateCoordinator(
+      SessionRegistry registry,
+      LobbyAdmission admission)
+  {
+    return new LobbyCoordinator(
+        registry,
+        Broadcast,
+        countdownDuration,
+        () => admission.TargetPlayers,
+        admission.MarkMatchStarted,
+        admission.ReopenLobby);
+  }
+
+  private async Task ListenAsync(
+      List<Task> connectionTasks,
+      CancellationToken cancellationToken)
+  {
+    _listener.Start();
+    int boundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
+    _started.TrySetResult(boundPort);
+    await _output.WriteLineAsync($"Lobby server listening on 0.0.0.0:{boundPort}.");
+    while (!cancellationToken.IsCancellationRequested)
+    {
+      RemoveCompletedTasks(connectionTasks);
+      await AcceptClientAsync(connectionTasks, cancellationToken);
+    }
+  }
+
+  private async Task AcceptClientAsync(
+      List<Task> connectionTasks,
+      CancellationToken cancellationToken)
+  {
+    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken);
+    client.NoDelay = true;
+    if (!_connectionSlots.Wait(0, cancellationToken))
+    {
+      await RejectFullServerAsync(client, cancellationToken);
+      return;
+    }
+
+    RegisterConnection(client, connectionTasks, cancellationToken);
+  }
+
+  private void RegisterConnection(
+      TcpClient client,
+      List<Task> connectionTasks,
+      CancellationToken cancellationToken)
+  {
+    PlayerId playerId = new(Interlocked.Increment(ref _nextPlayerId));
+    SessionConnection connection = new(client, playerId, _commands, _admission);
+    if (!_connections.TryAdd(playerId, connection))
+    {
+      connection.Dispose();
+      _connectionSlots.Release();
+      return;
+    }
+
+    connectionTasks.Add(RunConnectionSafelyAsync(connection, cancellationToken));
   }
 
   private void Broadcast(ProtocolMessage message)
   {
     foreach (SessionConnection connection in _connections.Values)
     {
-      if (!connection.CanReceiveBroadcasts)
-      {
-        continue;
-      }
+      SendOrDisconnect(connection, message);
+    }
+  }
 
-      if (!connection.TrySend(message))
-      {
-        connection.Disconnect();
-      }
+  private static void SendOrDisconnect(SessionConnection connection, ProtocolMessage message)
+  {
+    if (connection.CanReceiveBroadcasts && !connection.TrySend(message))
+    {
+      connection.Disconnect();
     }
   }
 
@@ -144,39 +172,71 @@ public sealed class LobbyServer(
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
-      // The server owns shutdown cancellation.
+      // Server cancellation owns active connection shutdown.
     }
-    catch (ProtocolException exception)
+    catch (Exception exception)
     {
-      await _output.WriteLineAsync($"Protocol error for player {connection.PlayerId.Value}: {exception.Error}.");
-    }
-    catch (IOException exception)
-    {
-      await _output.WriteLineAsync($"Connection closed for player {connection.PlayerId.Value}: {exception.Message}");
-    }
-    catch (SocketException exception)
-    {
-      await _output.WriteLineAsync($"Socket closed for player {connection.PlayerId.Value}: {exception.SocketErrorCode}.");
+      await LogConnectionErrorAsync(connection, exception);
     }
     finally
     {
-      _connections.TryRemove(connection.PlayerId, out _);
-      connection.Dispose();
-      _connectionSlots.Release();
+      ReleaseConnection(connection);
     }
   }
 
-  private static async Task RejectFullServerAsync(TcpClient client, CancellationToken cancellationToken)
+  private async Task LogConnectionErrorAsync(
+      SessionConnection connection,
+      Exception exception)
+  {
+    string detail = exception switch
+    {
+      ProtocolException protocol => $"protocol error {protocol.Error}",
+      SocketException socket => $"socket error {socket.SocketErrorCode}",
+      IOException io => $"connection closed: {io.Message}",
+      _ => $"unexpected connection error: {exception}",
+    };
+    await _output.WriteLineAsync($"Player {connection.PlayerId.Value}: {detail}");
+  }
+
+  private void ReleaseConnection(SessionConnection connection)
+  {
+    _connections.TryRemove(connection.PlayerId, out _);
+    connection.Dispose();
+    _connectionSlots.Release();
+  }
+
+  private async Task ShutdownAsync(List<Task> connectionTasks, Task gameLoopTask)
+  {
+    StopListenerAndConnections();
+    await Task.WhenAll(connectionTasks);
+    _commands.Complete();
+    await gameLoopTask;
+  }
+
+  private void StopListenerAndConnections()
+  {
+    _listener.Stop();
+    foreach (SessionConnection connection in _connections.Values)
+    {
+      connection.Disconnect();
+    }
+  }
+
+  private static void RemoveCompletedTasks(List<Task> connectionTasks)
+  {
+    connectionTasks.RemoveAll(task => task.IsCompleted);
+  }
+
+  private static async Task RejectFullServerAsync(
+      TcpClient client,
+      CancellationToken cancellationToken)
   {
     using (client)
     {
-      ProtocolMessage error = new ProtocolMessage(
-          1,
-          new ErrorPayload("serverFull", "El server ya tiene conectados 4 jugadores."));
-      await LengthPrefixedFrame.WriteAsync(
-          client.GetStream(),
-          ProtocolSerializer.Serialize(error),
-          cancellationToken);
+      ErrorPayload payload = new("serverFull", "El server ya tiene conectados 4 jugadores.");
+      ProtocolMessage error = new(1, payload);
+      byte[] bytes = ProtocolSerializer.Serialize(error);
+      await LengthPrefixedFrame.WriteAsync(client.GetStream(), bytes, cancellationToken);
     }
   }
 }

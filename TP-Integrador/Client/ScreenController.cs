@@ -22,6 +22,8 @@ internal sealed class ScreenController
     private readonly Label _hudLabel;
     private readonly Control _lobbyScreen;
     private readonly Label _lobbyLabel;
+    private readonly Control _pauseScreen;
+    private readonly ColorRect _pauseShade;
     private readonly Label _rematchStatusLabel;
     private readonly Label _recordsLabel;
     private readonly Control _resultScreen;
@@ -35,8 +37,6 @@ internal sealed class ScreenController
     private readonly Label _waveTransitionSubtitle;
     private readonly Label _waveTransitionTimer;
     private readonly Label _waveTransitionTitle;
-    private readonly Control _pauseScreen;
-    private readonly ColorRect _pauseShade;
 
     public ScreenController(Node owner)
     {
@@ -75,11 +75,11 @@ internal sealed class ScreenController
 
     public Button LobbyExitButton { get; private set; } = null!;
 
+    public Button PauseExitButton { get; private set; } = null!;
+
     public Button ReplayButton { get; private set; } = null!;
 
     public Button ResumeButton { get; private set; } = null!;
-    
-    public Button PauseExitButton { get; private set; } = null!;
 
     public OptionButton ShipSelector { get; private set; } = null!;
 
@@ -143,6 +143,24 @@ internal sealed class ScreenController
         LobbyExitButton.Disabled = ready;
     }
 
+    public void ShowPause(bool canResume)
+    {
+        _pauseShade.Visible = true;
+        _pauseScreen.Visible = true;
+        ResumeButton.Disabled = !canResume;
+        ResumeButton.Text = canResume ? "REANUDAR" : "ESPERANDO AL JUGADOR QUE PAUSÓ";
+        if (canResume)
+        {
+            ResumeButton.GrabFocus();
+        }
+    }
+
+    public void HidePause()
+    {
+        _pauseScreen.Visible = false;
+        _pauseShade.Visible = false;
+    }
+
     public void SetRematchReady(bool ready)
     {
         ReplayButton.Text = ready ? "CANCELAR REVANCHA" : "SÍ, REVANCHA";
@@ -152,19 +170,6 @@ internal sealed class ScreenController
         _rematchStatusLabel.AddThemeColorOverride(
             "font_color",
             ready ? InterfaceStyles.Success : InterfaceStyles.MutedText);
-    }
-
-    public void ShowPause()
-    {
-        _pauseShade.Visible = true;
-        _pauseScreen.Visible = true;
-        ResumeButton.GrabFocus();
-    }
-
-    public void HidePause()
-    {
-        _pauseScreen.Visible = false;
-        _pauseShade.Visible = false;
     }
 
     public void ShowConnection()
@@ -204,31 +209,41 @@ internal sealed class ScreenController
         }
     }
 
-    public void ShowResult(MatchEndedPayload result, PlayerId? localPlayerId)
-    {
-        SetVisibility(connection: false, lobby: false, result: true, hud: false);
-        _resultTitle.Text = result.Victory ? "¡VICTORIA!" : "MISIÓN FALLIDA";
-        _resultTitle.AddThemeColorOverride(
-            "font_color",
-            result.Victory ? InterfaceStyles.Success : InterfaceStyles.Danger);
-        _resultSubtitle.Text = result.Victory
-            ? "LA GALAXIA ESTÁ A SALVO"
-            : "LA FLOTA ENEMIGA SUPERÓ AL EQUIPO";
+  public void ShowResult(MatchEndedPayload result, PlayerId? localPlayerId)
+  {
+    SetVisibility(connection: false, lobby: false, result: true, hud: false);
+    SetResultHeader(result.Victory);
+    _rankingLabel.Text = FormatRanking(result.Ranking, localPlayerId);
+    _recordsLabel.Text = FormatRecords(result.Records);
+    ReplayButton.Disabled = false;
+    ExitButton.Disabled = false;
+    SetRematchReady(ready: false);
+  }
 
-        _rankingLabel.Text = string.Join(
-            '\n',
-            result.Ranking.Select((entry, index) => RankingLine(entry, index, localPlayerId)));
+  private void SetResultHeader(bool victory)
+  {
+    _resultTitle.Text = victory ? "¡VICTORIA!" : "MISIÓN FALLIDA";
+    Color color = victory ? InterfaceStyles.Success : InterfaceStyles.Danger;
+    _resultTitle.AddThemeColorOverride("font_color", color);
+    _resultSubtitle.Text = victory
+        ? "LA GALAXIA ESTÁ A SALVO"
+        : "LA FLOTA ENEMIGA SUPERÓ AL EQUIPO";
+  }
 
-        _recordsLabel.Text = result.Records is { Length: > 0 }
-            ? string.Join(
-                '\n',
-                result.Records.Take(5).Select((entry, index) => RankingLine(entry, index, localPlayerId: null)))
-            : "Todavía no hay récords registrados.";
+  private static string FormatRanking(ScoreEntry[] ranking, PlayerId? localPlayerId)
+  {
+    return string.Join(
+        '\n',
+        ranking.Select((entry, index) => RankingLine(entry, index, localPlayerId)));
+  }
 
-        ReplayButton.Disabled = false;
-        ExitButton.Disabled = false;
-        SetRematchReady(ready: false);
-    }
+  private static string FormatRecords(ScoreEntry[]? records)
+  {
+    return records is { Length: > 0 }
+        ? string.Join('\n', records.Take(5).Select(
+            (entry, index) => RankingLine(entry, index, localPlayerId: null)))
+        : "Todavía no hay récords registrados.";
+  }
 
     private static string ParticipantLine(LobbyParticipant participant)
     {
@@ -249,132 +264,196 @@ internal sealed class ScreenController
             : $"DECIDIENDO  {participant.PlayerName}";
     }
 
-    private (Control Screen, Label Status) BuildConnectionScreen(CanvasLayer layer)
+  private (Control Screen, Label Status) BuildConnectionScreen(CanvasLayer layer)
+  {
+    (Control screen, VBoxContainer content) = CreateScreen(
+        layer,
+        "Connection",
+        new Vector2(660f, 610f));
+    AddHeader(content, "SPACE SHOOTER LAN", "DEFENDÉ LA GALAXIA EN EQUIPO");
+    AddConnectionFields(content);
+    AddMatchSelector(content);
+    AddConnectButton(content);
+    Label status = AddConnectionStatus(content);
+    AddControlsHelp(content);
+    return (screen, status);
+  }
+
+  private void AddConnectionFields(VBoxContainer content)
+  {
+    VBoxContainer connection = AddSection(content, "CONEXIÓN", "ConnectionSection");
+    connection.AddChild(CreateFieldLabel("IP DEL SERVIDOR"));
+    HostInput = new LineEdit { Text = "127.0.0.1", PlaceholderText = "Dirección IPv4" };
+    InterfaceStyles.ApplyField(HostInput);
+    connection.AddChild(HostInput);
+    connection.AddChild(CreateFieldLabel("NOMBRE DEL PILOTO"));
+    NameInput = CreateNameInput();
+    connection.AddChild(NameInput);
+  }
+
+  private static LineEdit CreateNameInput()
+  {
+    LineEdit input = new()
     {
-        (Control screen, VBoxContainer content) = CreateScreen(layer, "Connection", new Vector2(660f, 610f));
-        AddHeader(content, "SPACE SHOOTER LAN", "DEFENDÉ LA GALAXIA EN EQUIPO");
+      Text = System.Environment.MachineName,
+      PlaceholderText = "Tu nombre",
+      MaxLength = 32,
+    };
+    InterfaceStyles.ApplyField(input);
+    return input;
+  }
 
-        VBoxContainer connection = AddSection(content, "CONEXIÓN", "ConnectionSection");
-        connection.AddChild(CreateFieldLabel("IP DEL SERVIDOR"));
-        HostInput = new LineEdit { Text = "127.0.0.1", PlaceholderText = "Dirección IPv4" };
-        InterfaceStyles.ApplyField(HostInput);
-        connection.AddChild(HostInput);
-        connection.AddChild(CreateFieldLabel("NOMBRE DEL PILOTO"));
-        NameInput = new LineEdit
-        {
-            Text = System.Environment.MachineName,
-            PlaceholderText = "Tu nombre",
-            MaxLength = 32,
-        };
-        InterfaceStyles.ApplyField(NameInput);
-        connection.AddChild(NameInput);
+  private void AddMatchSelector(VBoxContainer content)
+  {
+    VBoxContainer match = AddSection(content, "TIPO DE PARTIDA", "Match");
+    PlayerCountSelector = CreatePlayerCountSelector();
+    match.AddChild(PlayerCountSelector);
+  }
 
-        VBoxContainer match = AddSection(content, "TIPO DE PARTIDA", "Match");
-        PlayerCountSelector = CreatePlayerCountSelector();
-        match.AddChild(PlayerCountSelector);
+  private void AddConnectButton(VBoxContainer content)
+  {
+    ConnectButton = new Button { Text = "CONECTARSE" };
+    InterfaceStyles.ApplyButton(ConnectButton, primary: true);
+    content.AddChild(Center(ConnectButton));
+  }
 
-        ConnectButton = new Button { Text = "CONECTARSE" };
-        InterfaceStyles.ApplyButton(ConnectButton, primary: true);
-        content.AddChild(Center(ConnectButton));
+  private static Label AddConnectionStatus(VBoxContainer content)
+  {
+    Label status = new()
+    {
+      HorizontalAlignment = HorizontalAlignment.Center,
+      AutowrapMode = TextServer.AutowrapMode.WordSmart,
+      CustomMinimumSize = new Vector2(0f, 44f),
+    };
+    InterfaceStyles.ApplyLabel(status, 14, InterfaceStyles.MutedText);
+    content.AddChild(status);
+    return status;
+  }
 
-        Label status = new()
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
+  private static void AddControlsHelp(VBoxContainer content)
+  {
+    Label controls = new()
+    {
+      Text = "MOVIMIENTO: FLECHAS  ·  DISPARO: ESPACIO  ·  MENÚ: ESC",
+      HorizontalAlignment = HorizontalAlignment.Center,
+    };
+    InterfaceStyles.ApplyLabel(controls, 13, InterfaceStyles.MutedText);
+    content.AddChild(controls);
+  }
 
-        // Label status = new() { HorizontalAlignment = HorizontalAlignment.Center };
-        
-        InterfaceStyles.ApplyLabel(status, 14, InterfaceStyles.MutedText);
-        content.AddChild(status);
+  private (Control Screen, Label Lobby) BuildLobbyScreen(CanvasLayer layer)
+  {
+    (Control screen, VBoxContainer content) = CreateScreen(
+        layer,
+        "Lobby",
+        new Vector2(760f, 590f));
+    AddHeader(content, "SALA DE ESPERA", "PREPARÁ TU NAVE PARA LA MISIÓN");
+    Label lobby = AddLobbyParticipants(content);
+    AddShipSelector(content);
+    AddReadyButton(content);
+    AddLobbyExitButton(content);
+    return (screen, lobby);
+  }
 
-        Label controls = new()
-        {
-            Text = "MOVIMIENTO: FLECHAS  ·  DISPARO: ESPACIO",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        InterfaceStyles.ApplyLabel(controls, 13, InterfaceStyles.MutedText);
-        content.AddChild(controls);
-        return (screen, status);
+  private static Label AddLobbyParticipants(VBoxContainer content)
+  {
+    VBoxContainer pilots = AddSection(content, "PILOTOS CONECTADOS", "Pilots");
+    Label lobby = new();
+    InterfaceStyles.ApplyLabel(lobby, 16);
+    pilots.AddChild(lobby);
+    return lobby;
+  }
+
+  private void AddShipSelector(VBoxContainer content)
+  {
+    VBoxContainer ship = AddSection(content, "ELEGÍ TU NAVE", "Ship");
+    ShipSelector = new OptionButton();
+    foreach (string shipId in ShipIds)
+    {
+      ShipSelector.AddIconItem(AssetCatalog.GetShip(shipId), ShipDisplayName(shipId));
     }
 
-    private (Control Screen, Label Lobby) BuildLobbyScreen(CanvasLayer layer)
+    InterfaceStyles.ApplyOptionButton(ShipSelector);
+    ship.AddChild(ShipSelector);
+  }
+
+  private void AddReadyButton(VBoxContainer content)
+  {
+    ReadyButton = new Button { Text = "ESTOY LISTO" };
+    InterfaceStyles.ApplyButton(ReadyButton, primary: true);
+    content.AddChild(Center(ReadyButton));
+  }
+
+  private void AddLobbyExitButton(VBoxContainer content)
+  {
+    LobbyExitButton = new Button { Text = "DESCONECTARSE" };
+    InterfaceStyles.ApplyButton(LobbyExitButton);
+    content.AddChild(Center(LobbyExitButton));
+  }
+
+  private (Control Screen, Label Title, Label Subtitle, Label Ranking, Label Records, Label Rematch)
+      BuildResultScreen(CanvasLayer layer)
+  {
+    (Control screen, VBoxContainer content) = CreateScreen(layer, "Result", new Vector2(790f, 680f));
+    Label title = AddHeader(content, "RESULTADO", "FIN DE LA PARTIDA");
+    Label subtitle = content.GetNode<Label>("Header/Subtitle");
+    Label ranking = AddResultSection(content, "CLASIFICACIÓN", "Ranking", InterfaceStyles.Text);
+    Label records = AddResultSection(content, "MEJORES PUNTAJES", "Records", InterfaceStyles.MutedText);
+    Label rematch = AddRematchQuestion(content);
+    AddResultActions(content);
+    return (screen, title, subtitle, ranking, records, rematch);
+  }
+
+  private static Label AddResultSection(
+      VBoxContainer content,
+      string title,
+      string name,
+      Color color)
+  {
+    VBoxContainer section = AddSection(content, title, name);
+    Label text = new() { Name = "Text" };
+    InterfaceStyles.ApplyLabel(text, 15, color);
+    section.AddChild(text);
+    return text;
+  }
+
+  private static Label AddRematchQuestion(VBoxContainer content)
+  {
+    Label question = new()
     {
-        (Control screen, VBoxContainer content) = CreateScreen(layer, "Lobby", new Vector2(760f, 590f));
-        AddHeader(content, "SALA DE ESPERA", "PREPARÁ TU NAVE PARA LA MISIÓN");
+      Text = "¿QUIEREN VOLVER A JUGAR?",
+      HorizontalAlignment = HorizontalAlignment.Center,
+    };
+    InterfaceStyles.ApplyLabel(question, 19, InterfaceStyles.Accent);
+    content.AddChild(question);
+    Label status = CreateRematchStatus();
+    content.AddChild(status);
+    return status;
+  }
 
-        VBoxContainer pilots = AddSection(content, "PILOTOS CONECTADOS", "Pilots");
-        Label lobby = new();
-        InterfaceStyles.ApplyLabel(lobby, 16);
-        pilots.AddChild(lobby);
-
-        VBoxContainer ship = AddSection(content, "ELEGÍ TU NAVE", "Ship");
-        ShipSelector = new OptionButton();
-        foreach (string shipId in ShipIds)
-        {
-            ShipSelector.AddIconItem(AssetCatalog.GetShip(shipId), ShipDisplayName(shipId));
-        }
-
-        InterfaceStyles.ApplyOptionButton(ShipSelector);
-        ship.AddChild(ShipSelector);
-
-        ReadyButton = new Button { Text = "ESTOY LISTO" };
-        InterfaceStyles.ApplyButton(ReadyButton, primary: true);
-        content.AddChild(Center(ReadyButton));
-
-        LobbyExitButton = new Button { Text = "DESCONECTARSE" };
-        InterfaceStyles.ApplyButton(LobbyExitButton);
-        content.AddChild(Center(LobbyExitButton));
-
-
-        return (screen, lobby);
-    }
-
-    private (Control Screen, Label Title, Label Subtitle, Label Ranking, Label Records, Label Rematch)
-        BuildResultScreen(CanvasLayer layer)
+  private static Label CreateRematchStatus()
+  {
+    Label status = new()
     {
-        (Control screen, VBoxContainer content) = CreateScreen(layer, "Result", new Vector2(790f, 680f));
-        Label title = AddHeader(content, "RESULTADO", "FIN DE LA PARTIDA");
-        Label subtitle = content.GetNode<Label>("Header/Subtitle");
+      HorizontalAlignment = HorizontalAlignment.Center,
+      CustomMinimumSize = new Vector2(0f, 42f),
+    };
+    InterfaceStyles.ApplyLabel(status, 14, InterfaceStyles.MutedText);
+    return status;
+  }
 
-        VBoxContainer ranking = AddSection(content, "CLASIFICACIÓN", "Ranking");
-        Label rankingText = new() { Name = "Text" };
-        InterfaceStyles.ApplyLabel(rankingText, 16);
-        ranking.AddChild(rankingText);
-
-        VBoxContainer records = AddSection(content, "MEJORES PUNTAJES", "Records");
-        Label recordsText = new() { Name = "Text" };
-        InterfaceStyles.ApplyLabel(recordsText, 15, InterfaceStyles.MutedText);
-        records.AddChild(recordsText);
-
-        Label question = new()
-        {
-            Text = "¿QUIEREN VOLVER A JUGAR?",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        InterfaceStyles.ApplyLabel(question, 19, InterfaceStyles.Accent);
-        content.AddChild(question);
-
-        Label rematch = new()
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            CustomMinimumSize = new Vector2(0f, 42f),
-        };
-        InterfaceStyles.ApplyLabel(rematch, 14, InterfaceStyles.MutedText);
-        content.AddChild(rematch);
-
-        ReplayButton = new Button { Text = "SÍ, REVANCHA" };
-        InterfaceStyles.ApplyButton(ReplayButton, primary: true);
-        ExitButton = new Button { Text = "NO, VOLVER AL INICIO" };
-        InterfaceStyles.ApplyButton(ExitButton);
-        HBoxContainer actions = new() { Alignment = BoxContainer.AlignmentMode.Center };
-        actions.AddThemeConstantOverride("separation", 18);
-        actions.AddChild(ReplayButton);
-        actions.AddChild(ExitButton);
-        content.AddChild(actions);
-        return (screen, title, subtitle, rankingText, recordsText, rematch);
-    }
+  private void AddResultActions(VBoxContainer content)
+  {
+    ReplayButton = new Button { Text = "SÍ, REVANCHA" };
+    ExitButton = new Button { Text = "NO, VOLVER AL INICIO" };
+    InterfaceStyles.ApplyButton(ReplayButton, primary: true);
+    InterfaceStyles.ApplyButton(ExitButton);
+    HBoxContainer actions = new() { Alignment = BoxContainer.AlignmentMode.Center };
+    actions.AddThemeConstantOverride("separation", 18);
+    actions.AddChild(ReplayButton);
+    actions.AddChild(ExitButton);
+    content.AddChild(actions);
+  }
 
     private static (Control Panel, Label Label) BuildHud(CanvasLayer layer)
     {
@@ -391,101 +470,125 @@ internal sealed class ScreenController
         return (panel, label);
     }
 
-    private static (Control Screen, ColorRect Shade, Label Title, Label Subtitle, Label Bonus, Label Timer)
-        BuildWaveTransition(CanvasLayer layer)
+  private static (Control Screen, ColorRect Shade, Label Title, Label Subtitle, Label Bonus, Label Timer)
+      BuildWaveTransition(CanvasLayer layer)
+  {
+    ColorRect shade = CreateTransitionShade(layer);
+    (Control screen, VBoxContainer content) = CreateScreen(
+        layer,
+        "WaveTransition",
+        new Vector2(560f, 320f));
+    screen.MouseFilter = Control.MouseFilterEnum.Ignore;
+    (Label title, Label subtitle, Label bonus, Label timer) = AddTransitionContent(content);
+    screen.Visible = false;
+    shade.Visible = false;
+    return (screen, shade, title, subtitle, bonus, timer);
+  }
+
+  private static ColorRect CreateTransitionShade(CanvasLayer layer)
+  {
+    ColorRect shade = new()
     {
-        ColorRect shade = new()
-        {
-            Color = new Color(0.005f, 0.015f, 0.04f, 0.78f),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        FillParent(shade);
-        layer.AddChild(shade);
+      Color = new Color(0.005f, 0.015f, 0.04f, 0.78f),
+      MouseFilter = Control.MouseFilterEnum.Ignore,
+    };
+    FillParent(shade);
+    layer.AddChild(shade);
+    return shade;
+  }
 
-        (Control screen, VBoxContainer content) = CreateScreen(
-            layer,
-            "WaveTransition",
-            new Vector2(560f, 320f));
-        screen.MouseFilter = Control.MouseFilterEnum.Ignore;
+  private static (Label Title, Label Subtitle, Label Bonus, Label Timer) AddTransitionContent(
+      VBoxContainer content)
+  {
+    Label title = AddTransitionTitle(content);
+    Label subtitle = AddTransitionLabel(content, 23, InterfaceStyles.Text);
+    HSeparator separator = new();
+    separator.AddThemeConstantOverride("separation", 12);
+    content.AddChild(separator);
+    Label bonus = AddTransitionLabel(content, 17, InterfaceStyles.Success);
+    Label timer = AddTransitionLabel(content, 15, InterfaceStyles.MutedText);
+    return (title, subtitle, bonus, timer);
+  }
 
-        Label title = new();
-        InterfaceStyles.ApplyTitle(title, InterfaceStyles.Accent);
-        title.AddThemeFontSizeOverride("font_size", 48);
-        content.AddChild(title);
+  private static Label AddTransitionTitle(VBoxContainer content)
+  {
+    Label title = new();
+    InterfaceStyles.ApplyTitle(title, InterfaceStyles.Accent);
+    title.AddThemeFontSizeOverride("font_size", 48);
+    content.AddChild(title);
+    return title;
+  }
 
-        Label subtitle = new() { HorizontalAlignment = HorizontalAlignment.Center };
-        InterfaceStyles.ApplyLabel(subtitle, 23, InterfaceStyles.Text);
-        content.AddChild(subtitle);
+  private static Label AddTransitionLabel(VBoxContainer content, int size, Color color)
+  {
+    Label label = new() { HorizontalAlignment = HorizontalAlignment.Center };
+    InterfaceStyles.ApplyLabel(label, size, color);
+    content.AddChild(label);
+    return label;
+  }
 
-        HSeparator separator = new();
-        separator.AddThemeConstantOverride("separation", 12);
-        content.AddChild(separator);
-
-        Label bonus = new() { HorizontalAlignment = HorizontalAlignment.Center };
-        InterfaceStyles.ApplyLabel(bonus, 17, InterfaceStyles.Success);
-        content.AddChild(bonus);
-
-        Label timer = new() { HorizontalAlignment = HorizontalAlignment.Center };
-        InterfaceStyles.ApplyLabel(timer, 15, InterfaceStyles.MutedText);
-        content.AddChild(timer);
-
-        screen.Visible = false;
-        shade.Visible = false;
-        return (screen, shade, title, subtitle, bonus, timer);
-    }
-
-    private static (Control Screen, ColorRect Shade, Button Resume, Button Exit)
-        BuildPauseScreen(CanvasLayer layer)
+  private static (Control Screen, ColorRect Shade, Button Resume, Button Exit)
+      BuildPauseScreen(CanvasLayer layer)
+  {
+    ColorRect shade = new()
     {
-        ColorRect shade = new()
-        {
-            Color = new Color(0.005f, 0.015f, 0.04f, 0.78f),
-        };
+      Color = new Color(0.005f, 0.015f, 0.04f, 0.78f),
+    };
+    FillParent(shade);
+    layer.AddChild(shade);
 
-        FillParent(shade);
-        layer.AddChild(shade);
+    (Control screen, VBoxContainer content) = CreateScreen(
+        layer,
+        "Pause",
+        new Vector2(560f, 360f));
+    AddHeader(content, "PAUSA", "LA MISIÓN ESTÁ EN CURSO");
 
-        (Control screen, VBoxContainer content) =
-            CreateScreen(layer, "Pause", new Vector2(560f, 360f));
+    Button resume = new() { Text = "REANUDAR" };
+    InterfaceStyles.ApplyButton(resume, primary: true);
+    content.AddChild(Center(resume));
 
-        AddHeader(content, "PAUSA", "LA MISIÓN ESTÁ EN CURSO");
+    Button exit = new() { Text = "SALIR DE LA PARTIDA" };
+    InterfaceStyles.ApplyButton(exit);
+    content.AddChild(Center(exit));
 
-        Button resume = new() { Text = "REANUDAR" };
-        InterfaceStyles.ApplyButton(resume, primary: true);
-        content.AddChild(Center(resume));
+    screen.Visible = false;
+    shade.Visible = false;
+    return (screen, shade, resume, exit);
+  }
 
-        Button exit = new() { Text = "SALIR DE LA PARTIDA" };
-        InterfaceStyles.ApplyButton(exit);
-        content.AddChild(Center(exit));
+  private static (Control Screen, VBoxContainer Content) CreateScreen(
+      CanvasLayer layer,
+      string name,
+      Vector2 minimumSize)
+  {
+    CenterContainer screen = new() { Name = name };
+    FillParent(screen);
+    PanelContainer panel = CreateScreenPanel(minimumSize);
+    VBoxContainer content = new() { Name = "Content" };
+    content.AddThemeConstantOverride("separation", 14);
+    panel.AddChild(CreateScreenMargin(content));
+    screen.AddChild(panel);
+    layer.AddChild(screen);
+    return (screen, content);
+  }
 
-        screen.Visible = false;
-        shade.Visible = false;
+  private static PanelContainer CreateScreenPanel(Vector2 minimumSize)
+  {
+    PanelContainer panel = new() { Name = "Panel", CustomMinimumSize = minimumSize };
+    InterfaceStyles.ApplyPanel(panel);
+    return panel;
+  }
 
-        return (screen, shade, resume, exit);
-    }
-
-    private static (Control Screen, VBoxContainer Content) CreateScreen(
-        CanvasLayer layer,
-        string name,
-        Vector2 minimumSize)
-    {
-        CenterContainer screen = new() { Name = name };
-        FillParent(screen);
-        PanelContainer panel = new() { Name = "Panel", CustomMinimumSize = minimumSize };
-        InterfaceStyles.ApplyPanel(panel);
-        MarginContainer margin = new() { Name = "Margin" };
-        margin.AddThemeConstantOverride("margin_left", 34);
-        margin.AddThemeConstantOverride("margin_top", 26);
-        margin.AddThemeConstantOverride("margin_right", 34);
-        margin.AddThemeConstantOverride("margin_bottom", 26);
-        VBoxContainer content = new() { Name = "Content" };
-        content.AddThemeConstantOverride("separation", 14);
-        margin.AddChild(content);
-        panel.AddChild(margin);
-        screen.AddChild(panel);
-        layer.AddChild(screen);
-        return (screen, content);
-    }
+  private static MarginContainer CreateScreenMargin(Control content)
+  {
+    MarginContainer margin = new() { Name = "Margin" };
+    margin.AddThemeConstantOverride("margin_left", 34);
+    margin.AddThemeConstantOverride("margin_top", 26);
+    margin.AddThemeConstantOverride("margin_right", 34);
+    margin.AddThemeConstantOverride("margin_bottom", 26);
+    margin.AddChild(content);
+    return margin;
+  }
 
     private static Label AddHeader(VBoxContainer parent, string titleText, string subtitleText)
     {

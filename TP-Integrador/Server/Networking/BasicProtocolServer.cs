@@ -18,23 +18,10 @@ public sealed class BasicProtocolServer(IPAddress address, int port, TextWriter 
 
   public async Task RunAsync(CancellationToken cancellationToken)
   {
-    List<Task> connections = new List<Task>();
-
+    List<Task> connections = [];
     try
     {
-      _listener.Start();
-      int boundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
-      _started.TrySetResult(boundPort);
-      await _output.WriteLineAsync($"Protocol server listening on 0.0.0.0:{boundPort}.");
-
-      while (!cancellationToken.IsCancellationRequested)
-      {
-        TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken);
-        client.NoDelay = true;
-        PlayerId playerId = new PlayerId(Interlocked.Increment(ref _nextPlayerId));
-        connections.Add(HandleClientSafelyAsync(client, playerId, cancellationToken));
-        connections.RemoveAll(task => task.IsCompleted);
-      }
+      await ListenAsync(connections, cancellationToken);
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -50,6 +37,29 @@ public sealed class BasicProtocolServer(IPAddress address, int port, TextWriter 
       _listener.Stop();
       await Task.WhenAll(connections);
     }
+  }
+
+  private async Task ListenAsync(List<Task> connections, CancellationToken cancellationToken)
+  {
+    _listener.Start();
+    int boundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
+    _started.TrySetResult(boundPort);
+    await _output.WriteLineAsync($"Protocol server listening on 0.0.0.0:{boundPort}.");
+    while (!cancellationToken.IsCancellationRequested)
+    {
+      await AcceptClientAsync(connections, cancellationToken);
+      connections.RemoveAll(task => task.IsCompleted);
+    }
+  }
+
+  private async Task AcceptClientAsync(
+      List<Task> connections,
+      CancellationToken cancellationToken)
+  {
+    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken);
+    client.NoDelay = true;
+    PlayerId playerId = new(Interlocked.Increment(ref _nextPlayerId));
+    connections.Add(HandleClientSafelyAsync(client, playerId, cancellationToken));
   }
 
   private async Task HandleClientSafelyAsync(

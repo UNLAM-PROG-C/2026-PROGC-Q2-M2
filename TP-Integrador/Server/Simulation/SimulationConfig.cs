@@ -32,6 +32,12 @@ public sealed record SimulationConfig
 
   public float EnemyRadius { get; init; } = 16;
 
+  /// <summary>Gets the authoritative boss hitbox width in world units.</summary>
+  public float BossHitboxWidth { get; init; } = 96;
+
+  /// <summary>Gets the authoritative boss hitbox height in world units.</summary>
+  public float BossHitboxHeight { get; init; } = 64;
+
   public int EnemyHealth { get; init; } = 10;
 
   public int EnemyCollisionDamage { get; init; } = 100;
@@ -82,29 +88,69 @@ public sealed record SimulationConfig
 
   public float PowerUpFallSpeed { get; init; } = 90;
 
-  public TimeSpan RespawnDelay { get; init; } = TimeSpan.FromSeconds(2);
+  /// <summary>Gets the deterministic drop probability applied after a normal enemy kill.</summary>
+  public float PowerUpDropChance { get; init; } = 0.2f;
+
+  /// <summary>Gets the delay before a surviving player reappears.</summary>
+  public TimeSpan RespawnDelay { get; init; } = TimeSpan.FromSeconds(1);
 
   public TimeSpan InvulnerabilityDuration { get; init; } = TimeSpan.FromSeconds(2);
 
   public TimeSpan PowerUpDuration { get; init; } = TimeSpan.FromSeconds(8);
 
+  /// <summary>
+  /// Validates all timing, geometry, and gameplay values before a match starts.
+  /// </summary>
+  /// <exception cref="ArgumentOutOfRangeException">A configured value is outside its range.</exception>
   public void Validate()
   {
     LevelConfigValidator.Validate(Levels);
-    if (FixedStep <= TimeSpan.Zero || MaxCatchUpSteps <= 0 ||
-        PlayerSpeed < 0 || SpeedBoostMultiplier <= 1f || PlayerRadius < 0 ||
-        PlayerStartingLives <= 0 || PlayerMaxHealth <= 0 ||
-        FireCooldown < TimeSpan.Zero || ProjectileSpeed <= 0 || ProjectileRadius < 0 || ProjectileDamage <= 0 ||
-        EnemyRadius < 0 || EnemyHealth <= 0 || EnemyCollisionDamage <= 0 || EnemyKillScore < 0 ||
-        EnemyProjectileDamage <= 0 || EnemyAttackInterval <= TimeSpan.Zero ||
-        PowerUpRadius < 0 || WaveTransitionDuration < TimeSpan.Zero ||
-        Wave1EnemyCount <= 0 || Wave2EnemyCount <= 0 || Wave3EnemyCount <= 0 ||
-        DiverHealth <= 0 || TankHealth <= 0 || BossHealth <= 0 || BossKillScore < 0 || WaveBonusScore < 0 ||
-        BossAttackDamage <= 0 || BossPhase1AttackInterval <= TimeSpan.Zero || BossPhase2AttackInterval <= TimeSpan.Zero ||
-        ScoutSpeed < 0 || DiverSpeed < 0 || TankSpeed < 0 || BossSpeed < 0 || PowerUpFallSpeed < 0 ||
-        RespawnDelay < TimeSpan.Zero || InvulnerabilityDuration < TimeSpan.Zero || PowerUpDuration <= TimeSpan.Zero)
+    if (HasInvalidTiming() || HasInvalidPlayerValues() || HasInvalidProjectileValues() ||
+        HasInvalidEnemyValues() || HasInvalidCampaignValues() || HasInvalidPowerUpValues())
     {
-      throw new ArgumentOutOfRangeException(nameof(SimulationConfig), "Simulation values are outside their valid range.");
+      throw new ArgumentOutOfRangeException(
+          nameof(SimulationConfig),
+          "Simulation values are outside their valid range.");
     }
+  }
+
+  private bool HasInvalidTiming()
+  {
+    return FixedStep <= TimeSpan.Zero || MaxCatchUpSteps <= 0 ||
+        FireCooldown < TimeSpan.Zero || EnemyAttackInterval <= TimeSpan.Zero ||
+        WaveTransitionDuration < TimeSpan.Zero || RespawnDelay < TimeSpan.Zero ||
+        InvulnerabilityDuration < TimeSpan.Zero || PowerUpDuration <= TimeSpan.Zero;
+  }
+
+  private bool HasInvalidPlayerValues()
+  {
+    return PlayerSpeed < 0 || SpeedBoostMultiplier <= 1f || PlayerRadius < 0 ||
+        PlayerStartingLives <= 0 || PlayerMaxHealth <= 0;
+  }
+
+  private bool HasInvalidProjectileValues()
+  {
+    return ProjectileSpeed <= 0 || ProjectileRadius < 0 || ProjectileDamage <= 0 ||
+        EnemyProjectileDamage <= 0;
+  }
+
+  private bool HasInvalidEnemyValues()
+  {
+    return EnemyRadius < 0 || BossHitboxWidth <= 0 || BossHitboxHeight <= 0 ||
+        EnemyHealth <= 0 || EnemyCollisionDamage <= 0 || EnemyKillScore < 0 ||
+        DiverHealth <= 0 || TankHealth <= 0 || BossHealth <= 0 || BossKillScore < 0;
+  }
+
+  private bool HasInvalidCampaignValues()
+  {
+    return Wave1EnemyCount <= 0 || Wave2EnemyCount <= 0 || Wave3EnemyCount <= 0 ||
+        WaveBonusScore < 0 || BossAttackDamage <= 0 ||
+        BossPhase1AttackInterval <= TimeSpan.Zero || BossPhase2AttackInterval <= TimeSpan.Zero ||
+        ScoutSpeed < 0 || DiverSpeed < 0 || TankSpeed < 0 || BossSpeed < 0;
+  }
+
+  private bool HasInvalidPowerUpValues()
+  {
+    return PowerUpRadius < 0 || PowerUpFallSpeed < 0 || PowerUpDropChance is < 0 or > 1;
   }
 }

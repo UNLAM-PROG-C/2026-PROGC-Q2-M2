@@ -948,19 +948,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Usuario\\.nuget\\packages\\": {}
+    "C:\\Users\\LENPAD\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
+      "projectUniqueName": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
       "projectName": "SpaceShooter.Server.Tests",
-      "projectPath": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
-      "packagesPath": "C:\\Users\\Usuario\\.nuget\\packages\\",
-      "outputPath": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\obj\\",
+      "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
+      "packagesPath": "C:\\Users\\LENPAD\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\Usuario\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\LENPAD\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
@@ -973,8 +973,8 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Server\\SpaceShooter.Server.csproj": {
-              "projectPath": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Server\\SpaceShooter.Server.csproj"
+            "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Server\\SpaceShooter.Server.csproj": {
+              "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Server\\SpaceShooter.Server.csproj"
             }
           }
         }
@@ -1029,7 +1029,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.404/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",

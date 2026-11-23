@@ -11,6 +11,8 @@ public static class CampaignLevels
   private const int BaseHealth = 10;
   private const float BaseSpeed = 55f;
 
+  /// <summary>Creates the immutable default ten-level campaign.</summary>
+  /// <returns>The ordered campaign configuration.</returns>
   public static IReadOnlyList<LevelConfig> CreateDefault()
   {
     return
@@ -23,18 +25,23 @@ public static class CampaignLevels
       CreateLevel(6, [Group(EnemyKind.Diver, 4, 2.2f, 1.4f), Group(EnemyKind.Tank, 2, 3.2f, 0.8f)]),
       CreateLevel(7, [Group(EnemyKind.Scout, 4, 1.6f, 1.4f), Group(EnemyKind.Tank, 3, 3.4f, 0.85f)]),
       CreateLevel(8, [Group(EnemyKind.Diver, 5, 2.5f, 1.5f), Group(EnemyKind.Tank, 3, 3.6f, 0.9f)]),
-      CreateLevel(9, [Group(EnemyKind.Scout, 4, 2f, 1.5f), Group(EnemyKind.Diver, 4, 3f, 1.6f), Group(EnemyKind.Tank, 3, 4f, 1f)]),
+      CreateLevel(9, LevelNineGroups()),
       CreateBossLevel(),
+    ];
+  }
+
+  private static EnemyGroupConfig[] LevelNineGroups()
+  {
+    return
+    [
+      Group(EnemyKind.Scout, 4, 2f, 1.5f),
+      Group(EnemyKind.Diver, 4, 3f, 1.6f),
+      Group(EnemyKind.Tank, 3, 4f, 1f),
     ];
   }
 
   private static LevelConfig CreateBossLevel()
   {
-    BossPhaseConfig[] phases =
-    [
-      new(1f, 1f, TimeSpan.FromSeconds(2), 50),
-      new(0.5f, 1.5f, TimeSpan.FromSeconds(1), 50),
-    ];
     return new LevelConfig(
         10,
         [new EnemyGroupConfig(EnemyKind.Boss, 1, 200, 80f)],
@@ -44,7 +51,16 @@ public static class CampaignLevels
         TimeSpan.FromSeconds(1),
         Enum.GetValues<PowerUpType>(),
         BaseBonus * 10,
-        phases);
+        CreateBossPhases());
+  }
+
+  private static BossPhaseConfig[] CreateBossPhases()
+  {
+    return
+    [
+      new BossPhaseConfig(1f, 1f, TimeSpan.FromSeconds(2), 50),
+      new BossPhaseConfig(0.5f, 1.5f, TimeSpan.FromSeconds(1), 50),
+    ];
   }
 
   private static LevelConfig CreateLevel(

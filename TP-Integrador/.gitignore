@@ -15,6 +15,11 @@ Client/.godot/
 # Runtime data and logs
 logs/
 data/
+records.json
+records.json.tmp
+
+# Godot-generated C# identifiers
+*.cs.uid
 
 # OS
 Thumbs.db

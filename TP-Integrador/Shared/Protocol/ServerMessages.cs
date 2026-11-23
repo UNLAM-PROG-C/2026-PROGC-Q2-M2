@@ -24,6 +24,11 @@ public sealed record MatchStartedPayload(
     int Seed,
     long InitialTick) : IProtocolPayload;
 
+public sealed record PauseStatePayload(
+    bool Paused,
+    PlayerId? PausedBy,
+    long ServerTick) : IProtocolPayload;
+
 public sealed record PlayerSnapshot(
     PlayerId Id,
     Vector2D Position,

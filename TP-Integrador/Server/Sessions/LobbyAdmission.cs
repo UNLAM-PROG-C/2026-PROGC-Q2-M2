@@ -28,40 +28,49 @@ public sealed class LobbyAdmission
   {
     lock (_sync)
     {
-      if (requestedPlayers is < 1 or > 4)
+      AdmissionError? error = ValidateAdmission(requestedPlayers);
+      errorCode = error?.Code ?? string.Empty;
+      errorDescription = error?.Description ?? string.Empty;
+      if (error is not null)
       {
-        errorCode = "invalidMatchSize";
-        errorDescription = "La cantidad de jugadores debe ser de 1 a 4.";
-        return false;
-      }
-
-      if (_matchStarted)
-      {
-        errorCode = "matchInProgress";
-        errorDescription = "Ya hay una partida en progreso.";
-        return false;
-      }
-
-      _targetPlayers ??= requestedPlayers;
-      if (_targetPlayers != requestedPlayers)
-      {
-        errorCode = "matchSizeMismatch";
-        errorDescription = $"Este lobby esta configurado para {_targetPlayers} jugadores.";
-        return false;
-      }
-
-      if (_players.Count >= _targetPlayers)
-      {
-        errorCode = "lobbyFull";
-        errorDescription = $"Este lobby ya tiene {_targetPlayers} jugadores.";
         return false;
       }
 
       _players.Add(playerId);
-      errorCode = string.Empty;
-      errorDescription = string.Empty;
       return true;
     }
+  }
+
+  private AdmissionError? ValidateAdmission(int requestedPlayers)
+  {
+    if (requestedPlayers is < 1 or > 4)
+    {
+      return new AdmissionError(
+          "invalidMatchSize",
+          "La cantidad de jugadores debe ser de 1 a 4.");
+    }
+
+    if (_matchStarted)
+    {
+      return new AdmissionError("matchInProgress", "Ya hay una partida en progreso.");
+    }
+
+    _targetPlayers ??= requestedPlayers;
+    return ValidateCapacity(requestedPlayers);
+  }
+
+  private AdmissionError? ValidateCapacity(int requestedPlayers)
+  {
+    if (_targetPlayers != requestedPlayers)
+    {
+      return new AdmissionError(
+          "matchSizeMismatch",
+          $"Este lobby esta configurado para {_targetPlayers} jugadores.");
+    }
+
+    return _players.Count >= _targetPlayers
+        ? new AdmissionError("lobbyFull", $"Este lobby ya tiene {_targetPlayers} jugadores.")
+        : null;
   }
 
   public void MarkMatchStarted()
@@ -92,4 +101,6 @@ public sealed class LobbyAdmission
       }
     }
   }
+
+  private sealed record AdmissionError(string Code, string Description);
 }

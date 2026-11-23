@@ -112,57 +112,80 @@ public sealed class LobbyCoordinator
       return;
     }
 
+    if (!AreAllPlayersReady(sessions))
+    {
+      CancelCountdown(sessions, lobbyChanged);
+      return;
+    }
+
+    bool countdownStarted = EnsureCountdownStarted(now);
+    if (now >= _countdownDeadline!.Value)
+    {
+      StartMatch(sessions);
+      return;
+    }
+
+    PublishCountdown(sessions, now, lobbyChanged || countdownStarted);
+  }
+
+  private bool AreAllPlayersReady(ClientSession[] sessions)
+  {
     int? requiredPlayers = _requiredPlayers?.Invoke();
     bool hasRequiredPlayers = requiredPlayers is null
-            ? sessions.Length is >= 1 and <= 4
-            : sessions.Length == requiredPlayers;
-    bool allReady = hasRequiredPlayers &&
-                       sessions.All(session => session.Status == SessionStatus.Ready);
+        ? sessions.Length is >= 1 and <= 4
+        : sessions.Length == requiredPlayers;
+    return hasRequiredPlayers && sessions.All(session => session.Status == SessionStatus.Ready);
+  }
 
-    if (!allReady)
+  private void CancelCountdown(ClientSession[] sessions, bool lobbyChanged)
+  {
+    bool wasCountingDown = _countdownDeadline is not null;
+    _countdownDeadline = null;
+    _lastPublishedCountdown = null;
+    if (lobbyChanged || wasCountingDown)
     {
-      if (_countdownDeadline is not null)
-      {
-        _countdownDeadline = null;
-        _lastPublishedCountdown = null;
-        lobbyChanged = true;
-      }
+      BroadcastLobby(sessions, countdownSeconds: null);
+    }
+  }
 
-      if (lobbyChanged)
-      {
-        BroadcastLobby(sessions, countdownSeconds: null);
-      }
-
-      return;
+  private bool EnsureCountdownStarted(TimeSpan now)
+  {
+    if (_countdownDeadline is not null)
+    {
+      return false;
     }
 
-    if (_countdownDeadline is null)
+    _countdownDeadline = now + _countdownDuration;
+    _lastPublishedCountdown = null;
+    return true;
+  }
+
+  private void StartMatch(ClientSession[] sessions)
+  {
+    foreach (ClientSession session in sessions)
     {
-      _countdownDeadline = now + _countdownDuration;
-      _lastPublishedCountdown = null;
-      lobbyChanged = true;
+      session.Status = SessionStatus.Playing;
     }
 
-    if (now >= _countdownDeadline.Value)
-    {
-      foreach (ClientSession? session in sessions)
-      {
-        session.Status = SessionStatus.Playing;
-      }
+    ResetCountdown();
+    _matchStarted?.Invoke();
+    MatchStartedPayload payload = new(Interlocked.Increment(ref _nextMatchId), 1, 0);
+    _broadcast(new ProtocolMessage(NextSequence(), payload));
+  }
 
-      _countdownDeadline = null;
-      _lastPublishedCountdown = null;
-      _matchStarted?.Invoke();
-      _broadcast(new ProtocolMessage(
-          NextSequence(),
-          new MatchStartedPayload(
-              MatchId: Interlocked.Increment(ref _nextMatchId),
-              Seed: 1,
-              InitialTick: 0)));
-      return;
-    }
+  private void ResetCountdown()
+  {
+    _countdownDeadline = null;
+    _lastPublishedCountdown = null;
+  }
 
-    int secondsRemaining = Math.Max(1, (int)Math.Ceiling((_countdownDeadline.Value - now).TotalSeconds));
+  private void PublishCountdown(
+      ClientSession[] sessions,
+      TimeSpan now,
+      bool lobbyChanged)
+  {
+    double remaining = (_countdownDeadline!.Value - now).TotalSeconds;
+    int secondsRemaining = Math.Max(1, (int)Math.Ceiling(remaining));
     if (lobbyChanged || secondsRemaining != _lastPublishedCountdown)
     {
       _lastPublishedCountdown = secondsRemaining;

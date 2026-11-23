@@ -2,57 +2,50 @@ using SpaceShooter.GameDomain;
 
 namespace SpaceShooter.Server.Simulation;
 
+/// <summary>
+/// Coordinates deterministic simulation systems without duplicating their responsibilities.
+/// </summary>
 internal sealed class WorldSimulation
 {
-  private readonly SimulationConfig _config;
-  private readonly CombatManager _combatManager = new();
-  private readonly EntityFactory _entityFactory = new();
-  private readonly EnemyManager _enemyManager;
-  private readonly LevelManager _levelManager;
+  private readonly CampaignController _campaign;
+  private readonly CombatManager _combat = new();
+  private readonly SimulationContext _context;
+  private readonly PowerUpDropPolicy _dropPolicy;
+  private readonly EnemyAttackManager _enemyAttacks;
+  private readonly EnemyManager _enemies;
+  private readonly PlayerManager _players;
+  private readonly ProjectileManager _projectiles;
   private readonly IRandomSource _random;
-  private int _destroyedEnemyCount;
 
   public WorldSimulation(SimulationConfig config, IRandomSource random)
   {
     config.Validate();
-    _config = config;
     _random = random;
-    _levelManager = new LevelManager(config.Levels);
-    _enemyManager = new EnemyManager(config, _entityFactory, State);
+    _context = new SimulationContext(config, new EntityFactory(), State);
+    LevelManager levels = new(config.Levels);
+    _projectiles = new ProjectileManager(_context);
+    _players = new PlayerManager(_context, _combat, _projectiles);
+    _enemies = new EnemyManager(config, _context.Factory, State);
+    _enemyAttacks = new EnemyAttackManager(_context, levels, _projectiles);
+    _dropPolicy = new PowerUpDropPolicy(config, random, levels);
+    _campaign = new CampaignController(_context, levels, SpawnEnemy);
   }
 
   public GameState State { get; } = new();
 
-  public Player AddPlayer(Vector2D position) => AddPlayer(_entityFactory.CreatePlayerId(), position);
+  public Player AddPlayer(Vector2D position)
+  {
+    return AddPlayer(_context.Factory.CreatePlayerId(), position);
+  }
 
   public Player AddPlayer(PlayerId playerId, Vector2D position)
   {
-    if (playerId.Value <= 0 || State.Players.ContainsKey(playerId))
-    {
-      throw new ArgumentException("Player identifier must be positive and unique.", nameof(playerId));
-    }
-
-    Player player = _entityFactory.CreatePlayer(
-        playerId,
-        _config.PlayerBounds.Clamp(position, _config.PlayerRadius),
-        _config.PlayerSpeed,
-        CreateCircleHitbox(_config.PlayerRadius),
-        _config.PlayerStartingLives,
-        _config.PlayerMaxHealth);
-    State.AddPlayer(player);
-    State.MatchStatus = MatchStatus.Running;
-    return player;
+    return _players.Add(playerId, position);
   }
 
   public bool RemovePlayer(PlayerId playerId)
   {
-    bool removed = State.RemovePlayer(playerId);
-    if (removed && State.Players.Count == 0)
-    {
-      State.MatchStatus = MatchStatus.Lost;
-    }
-
-    return removed;
+    return _players.Remove(playerId);
   }
 
   public Enemy AddEnemy(
@@ -61,522 +54,224 @@ internal sealed class WorldSimulation
       int? health = null,
       float? speed = null)
   {
-    if (kind == EnemyKind.Boss)
-    {
-      State.BossPhase = 1;
-    }
-
-    Enemy enemy = _enemyManager.Create(
+    SetInitialBossPhase(kind);
+    Vector2D spawn = _enemies.ClampSpawn(kind, position);
+    return _enemies.Create(
         kind,
-        _config.WorldBounds.Clamp(position, _config.EnemyRadius),
+        spawn,
         health ?? HealthFor(kind),
         speed ?? SpeedFor(kind),
         AttackIntervalFor(kind));
-    return enemy;
   }
 
   public Enemy AddRandomEnemy(EnemyKind kind)
   {
-    int minimumX = (int)MathF.Ceiling(_config.WorldBounds.MinX + _config.EnemyRadius);
-    int maximumX = (int)MathF.Floor(_config.WorldBounds.MaxX - _config.EnemyRadius) + 1;
-    return AddEnemy(kind, new Vector2D(
-        _random.NextInt(minimumX, maximumX),
-        _config.WorldBounds.MinY + _config.EnemyRadius));
+    float margin = HorizontalMargin(kind);
+    int minimumX = (int)MathF.Ceiling(_context.Config.WorldBounds.MinX + margin);
+    int maximumX = (int)MathF.Floor(_context.Config.WorldBounds.MaxX - margin) + 1;
+    int x = _random.NextInt(minimumX, maximumX);
+    return AddEnemy(kind, _enemies.CreateTopSpawn(kind, x));
   }
 
   public PowerUp AddPowerUp(PowerUpType kind, Vector2D position)
   {
-    PowerUp powerUp = _entityFactory.CreatePowerUp(
-        kind,
-        _config.WorldBounds.Clamp(position, _config.PowerUpRadius),
-        _config.PowerUpFallSpeed,
-        CreateCircleHitbox(_config.PowerUpRadius));
+    SimulationConfig config = _context.Config;
+    Vector2D spawn = config.WorldBounds.Clamp(position, config.PowerUpRadius);
+    Hitbox hitbox = new(Vector2D.Zero, new CircleShape(config.PowerUpRadius));
+    PowerUp powerUp = _context.Factory.CreatePowerUp(kind, spawn, config.PowerUpFallSpeed, hitbox);
     State.AddPowerUp(powerUp);
     return powerUp;
   }
 
   public void StartCampaign()
   {
-    if (!_config.CampaignEnabled || State.Wave != 0)
-    {
-      return;
-    }
-
-    State.Wave = 1;
-    BeginWaveTransition(completionBonus: 0);
+    _campaign.Start();
   }
 
   public void Step(IReadOnlyDictionary<PlayerId, PlayerInput> inputs)
   {
-    if (State.MatchStatus is MatchStatus.Won or MatchStatus.Lost)
+    if (IsEnded() || AdvanceTransition())
     {
       return;
     }
 
-    if (State.WaveTransitionTicksRemaining > 0)
-    {
-      AdvanceWaveTransition();
-      State.Tick++;
-      return;
-    }
-
-    _combatManager.BeginTick();
-    float elapsedSeconds = (float)_config.FixedStep.TotalSeconds;
-    UpdatePlayers(inputs, elapsedSeconds);
-    UpdateProjectiles(elapsedSeconds);
-    UpdatePowerUps(elapsedSeconds);
-    ResolvePowerUpCollections();
-    UpdateEnemies(elapsedSeconds);
-    ResolveEnemyPlayerCollisions();
-    AdvanceCampaignOrCompleteMatch();
-
+    RunActiveTick(inputs);
     State.Tick++;
-    if (State.Players.Count > 0 &&
-        State.Players.Values.All(player => player.Status == PlayerStatus.Eliminated))
-    {
-      State.MatchStatus = MatchStatus.Lost;
-    }
+    UpdateDefeatStatus();
   }
 
   public void DamagePlayer(PlayerId playerId, int damage)
   {
     ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(damage, 0);
-
     if (State.Players.TryGetValue(playerId, out Player? player))
     {
-      ApplyDamage(player, damage);
+      _players.Damage(player, damage);
     }
   }
 
   public void DamageEnemy(EnemyId enemyId, PlayerId ownerId, int damage)
   {
     ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(damage, 0);
-    if (!State.Players.ContainsKey(ownerId))
-    {
-      throw new ArgumentException("Projectile owner must belong to the world.", nameof(ownerId));
-    }
-
-    if (State.Enemies.TryGetValue(enemyId, out Enemy? enemy) && enemy.Status == EnemyStatus.Active)
+    ValidateOwner(ownerId);
+    if (State.Enemies.TryGetValue(enemyId, out Enemy? enemy) && IsActive(enemy))
     {
       ApplyEnemyDamage(enemy, ownerId, damage);
     }
   }
 
-  private void UpdatePlayers(IReadOnlyDictionary<PlayerId, PlayerInput> inputs, float elapsedSeconds)
+  private bool IsEnded()
   {
-    foreach (Player player in State.Players.Values.OrderBy(player => player.Id.Value))
-    {
-      UpdatePlayerTimers(player);
-      if (player.Status is PlayerStatus.Respawning or PlayerStatus.Eliminated)
-      {
-        continue;
-      }
-
-      if (player.FireCooldownTicks > 0)
-      {
-        player.FireCooldownTicks--;
-      }
-
-      if (!inputs.TryGetValue(player.Id, out PlayerInput input))
-      {
-        continue;
-      }
-
-      Vector2D direction = input.Movement.LengthSquared > 1
-          ? input.Movement.NormalizedOrZero()
-          : input.Movement;
-      player.Position = _config.PlayerBounds.Clamp(
-          player.Position + (direction * (player.Speed * elapsedSeconds)),
-          _config.PlayerRadius);
-
-      if (input.Fire && player.FireCooldownTicks == 0)
-      {
-        Fire(player);
-      }
-    }
+    return State.MatchStatus is MatchStatus.Won or MatchStatus.Lost;
   }
 
-  private void UpdatePlayerTimers(Player player)
+  private bool AdvanceTransition()
   {
-    PowerUpManager.Update(player);
+    if (!_campaign.AdvanceTransition())
+    {
+      return false;
+    }
 
-    if (player.Status == PlayerStatus.Respawning && player.RespawnTicks > 0 && --player.RespawnTicks == 0)
-    {
-      player.Position = player.SpawnPosition;
-      player.Status = PlayerStatus.Invulnerable;
-      player.InvulnerabilityTicks = DurationInTicks(_config.InvulnerabilityDuration);
-    }
-    else if (player.Status == PlayerStatus.Invulnerable &&
-             player.InvulnerabilityTicks > 0 &&
-             --player.InvulnerabilityTicks == 0)
-    {
-      player.Status = PlayerStatus.Active;
-    }
+    State.Tick++;
+    return true;
   }
 
-  private void Fire(Player player)
+  private void RunActiveTick(IReadOnlyDictionary<PlayerId, PlayerInput> inputs)
   {
-    AddProjectile(player, new Vector2D(0, -_config.ProjectileSpeed));
-    if (player.ProjectileCount > 1)
-    {
-      AddProjectile(player, new Vector2D(-_config.ProjectileSpeed * 0.2f, -_config.ProjectileSpeed));
-      AddProjectile(player, new Vector2D(_config.ProjectileSpeed * 0.2f, -_config.ProjectileSpeed));
-    }
-
-    long cooldownTicks = (long)(_config.FireCooldown.Ticks * player.FireCooldownScale);
-    TimeSpan cooldown = TimeSpan.FromTicks(cooldownTicks);
-    player.FireCooldownTicks = Math.Max(1, DurationInTicks(cooldown));
-  }
-
-  private void AddProjectile(Player player, Vector2D velocity)
-  {
-    Projectile projectile = _entityFactory.CreateProjectile(
-        player.Key,
-        EntityType.AlliedProjectile,
-        player.Position,
-        velocity,
-        CreateCircleHitbox(_config.ProjectileRadius),
-        _config.ProjectileDamage);
-    State.AddProjectile(projectile);
-  }
-
-  private void UpdateProjectiles(float elapsedSeconds)
-  {
-    foreach (Projectile projectile in State.Projectiles.Values
-                 .Where(projectile => projectile.Status == ProjectileStatus.Active)
-                 .OrderBy(projectile => projectile.Id.Value))
-    {
-      projectile.Position += projectile.Velocity * elapsedSeconds;
-      if (!_config.WorldBounds.Contains(projectile.Position))
-      {
-        projectile.Status = ProjectileStatus.Consumed;
-        continue;
-      }
-
-      ResolveProjectileCollision(projectile);
-    }
-
-    foreach (ProjectileId projectileId in State.Projectiles
-                 .Where(pair => pair.Value.Status == ProjectileStatus.Consumed)
-                 .Select(pair => pair.Key)
-                 .ToArray())
-    {
-      State.RemoveProjectile(projectileId);
-    }
+    _combat.BeginTick();
+    float elapsedSeconds = (float)_context.Config.FixedStep.TotalSeconds;
+    _players.Update(inputs, elapsedSeconds);
+    _projectiles.Update(elapsedSeconds, ResolveProjectileCollision);
+    UpdatePowerUps(elapsedSeconds);
+    ResolvePowerUpCollections();
+    UpdateEnemies(elapsedSeconds);
+    ResolveEnemyPlayerCollisions();
+    _campaign.AdvanceOrComplete();
   }
 
   private void UpdatePowerUps(float elapsedSeconds)
   {
-    foreach (PowerUp powerUp in State.PowerUps.Values
-                 .Where(powerUp => powerUp.Status == PowerUpStatus.Available))
+    IEnumerable<PowerUp> available = State.PowerUps.Values
+        .Where(powerUp => powerUp.Status == PowerUpStatus.Available);
+    foreach (PowerUp powerUp in available)
     {
-      powerUp.Position += new Vector2D(0, _config.PowerUpFallSpeed * elapsedSeconds);
-      if (powerUp.Position.Y > _config.WorldBounds.MaxY)
-      {
-        powerUp.Status = PowerUpStatus.Collected;
-      }
+      AdvancePowerUp(powerUp, elapsedSeconds);
+    }
+  }
+
+  private void AdvancePowerUp(PowerUp powerUp, float elapsedSeconds)
+  {
+    powerUp.Position += new Vector2D(0, _context.Config.PowerUpFallSpeed * elapsedSeconds);
+    if (powerUp.Position.Y > _context.Config.WorldBounds.MaxY)
+    {
+      powerUp.Status = PowerUpStatus.Collected;
     }
   }
 
   private void ResolvePowerUpCollections()
   {
-    foreach (PowerUp powerUp in State.PowerUps.Values
-                 .Where(powerUp => powerUp.Status == PowerUpStatus.Available)
-                 .OrderBy(powerUp => powerUp.Id.Value))
+    foreach (PowerUp powerUp in AvailablePowerUps())
     {
-      Player? player = FindCollisionTarget<Player>(
-          powerUp,
-          ActivePlayers(),
-          CollisionType.Pickup);
-      if (player is null)
-      {
-        continue;
-      }
-
-      powerUp.Status = PowerUpStatus.Collected;
-      ApplyPowerUp(player, powerUp.Kind);
+      TryCollect(powerUp);
     }
 
     RemoveCollectedPowerUps();
   }
 
+  private IEnumerable<PowerUp> AvailablePowerUps()
+  {
+    return State.PowerUps.Values
+        .Where(powerUp => powerUp.Status == PowerUpStatus.Available)
+        .OrderBy(powerUp => powerUp.Id.Value);
+  }
+
+  private void TryCollect(PowerUp powerUp)
+  {
+    Player? player = FindCollisionTarget<Player>(
+        powerUp,
+        _players.ActivePlayers(),
+        CollisionType.Pickup);
+    if (player is null)
+    {
+      return;
+    }
+
+    powerUp.Status = PowerUpStatus.Collected;
+    int duration = _context.DurationInTicks(_context.Config.PowerUpDuration);
+    PowerUpManager.Collect(player, powerUp.Kind, duration, _context.Config.SpeedBoostMultiplier);
+  }
+
   private void RemoveCollectedPowerUps()
   {
-    PowerUpId[] collectedIds = State.PowerUps
+    PowerUpId[] ids = State.PowerUps
         .Where(pair => pair.Value.Status == PowerUpStatus.Collected)
         .Select(pair => pair.Key)
         .ToArray();
-    foreach (PowerUpId id in collectedIds)
+    foreach (PowerUpId id in ids)
     {
       State.RemovePowerUp(id);
     }
   }
 
-  private void ApplyPowerUp(Player player, PowerUpType kind)
-  {
-    int duration = DurationInTicks(_config.PowerUpDuration);
-    PowerUpManager.Collect(player, kind, duration, _config.SpeedBoostMultiplier);
-  }
-
   private void UpdateEnemies(float elapsedSeconds)
   {
-    foreach (Enemy enemy in State.Enemies.Values
-                 .Where(enemy => enemy.Status == EnemyStatus.Active)
-                 .OrderBy(enemy => enemy.Id.Value))
+    IEnumerable<Enemy> activeEnemies = State.Enemies.Values
+        .Where(IsActive)
+        .OrderBy(enemy => enemy.Id.Value);
+    foreach (Enemy enemy in activeEnemies)
     {
-      float speedMultiplier = enemy.Kind == EnemyKind.Boss
-          ? CurrentBossSpeedMultiplier()
-          : 1f;
-      bool reachedBottom = _enemyManager.UpdateMovement(
-          enemy,
-          elapsedSeconds,
-          speedMultiplier);
+      UpdateEnemy(enemy, elapsedSeconds);
+    }
+  }
 
-      if (enemy.Kind == EnemyKind.Boss)
-      {
-        UpdateBossAttack(enemy);
-      }
-      else if (enemy.Kind == EnemyKind.Tank)
-      {
-        UpdateTankAttack(enemy);
-      }
+  private void UpdateEnemy(Enemy enemy, float elapsedSeconds)
+  {
+    float multiplier = enemy.Kind == EnemyKind.Boss
+        ? _enemyAttacks.BossSpeedMultiplier()
+        : 1f;
+    bool reachedBottom = _enemies.UpdateMovement(enemy, elapsedSeconds, multiplier);
+    _enemyAttacks.Update(enemy);
+    if (reachedBottom)
+    {
+      DamageFirstPlayer();
+      _enemies.ResetAtTop(enemy);
+    }
+  }
 
-      if (!reachedBottom)
-      {
-        continue;
-      }
-
-      Player? target = State.Players.Values
-          .Where(player => player.Status != PlayerStatus.Eliminated)
-          .OrderBy(player => player.Id.Value)
-          .FirstOrDefault();
-      if (target is not null)
-      {
-        ApplyDamage(target, _config.EnemyCollisionDamage);
-      }
-
-      enemy.Position = new Vector2D(enemy.Position.X, _config.WorldBounds.MinY + _config.EnemyRadius);
+  private void DamageFirstPlayer()
+  {
+    Player? target = State.Players.Values
+        .Where(player => player.Status != PlayerStatus.Eliminated)
+        .OrderBy(player => player.Id.Value)
+        .FirstOrDefault();
+    if (target is not null)
+    {
+      _players.Damage(target, _context.Config.EnemyCollisionDamage);
     }
   }
 
   private void ResolveEnemyPlayerCollisions()
   {
-    foreach (Enemy enemy in State.Enemies.Values
-                 .Where(enemy => enemy.Status == EnemyStatus.Active && enemy.Kind != EnemyKind.Boss)
-                 .OrderBy(enemy => enemy.Id.Value))
+    IEnumerable<Enemy> enemies = State.Enemies.Values
+        .Where(enemy => IsActive(enemy) && enemy.Kind != EnemyKind.Boss)
+        .OrderBy(enemy => enemy.Id.Value);
+    foreach (Enemy enemy in enemies)
     {
-      IEnumerable<Player> activePlayers = State.Players.Values
-          .Where(player => player.Status == PlayerStatus.Active);
-      Player? player = FindCollisionTarget<Player>(
-          enemy,
-          activePlayers,
-          CollisionType.Damage);
-      if (player is null)
-      {
-        continue;
-      }
-
-      enemy.Status = EnemyStatus.Destroyed;
-      EnemyStateMachine.Destroy(enemy);
-      ApplyDamage(player, _config.EnemyCollisionDamage);
+      ResolveEnemyPlayerCollision(enemy);
     }
   }
 
-  private void ApplyDamage(Player player, int damage)
+  private void ResolveEnemyPlayerCollision(Enemy enemy)
   {
-    if (player.Status is PlayerStatus.Invulnerable or PlayerStatus.Respawning or PlayerStatus.Eliminated)
+    IEnumerable<Player> players = State.Players.Values
+        .Where(player => player.Status == PlayerStatus.Active);
+    Player? player = FindCollisionTarget<Player>(enemy, players, CollisionType.Damage);
+    if (player is null)
     {
       return;
     }
 
-    _combatManager.ApplyDamage(player, damage);
-    if (player.Health > 0)
-    {
-      return;
-    }
-
-    player.Lives--;
-    if (player.Lives <= 0)
-    {
-      player.Lives = 0;
-      player.Health = 0;
-      player.Status = PlayerStatus.Eliminated;
-      return;
-    }
-
-    player.Health = _config.PlayerMaxHealth;
-    player.Status = PlayerStatus.Respawning;
-    player.RespawnTicks = Math.Max(1, DurationInTicks(_config.RespawnDelay));
-  }
-
-  private void AdvanceCampaignOrCompleteMatch()
-  {
-    if (State.Enemies.Count == 0 ||
-        State.Enemies.Values.Any(enemy => enemy.Status == EnemyStatus.Active))
-    {
-      return;
-    }
-
-    if (!_config.CampaignEnabled)
-    {
-      State.MatchStatus = MatchStatus.Won;
-      return;
-    }
-
-    if (State.Wave >= _levelManager.LevelCount)
-    {
-      State.MatchStatus = MatchStatus.Won;
-      return;
-    }
-
-    int completionBonus = _levelManager.GetLevel(State.Wave).CompletionBonus;
-    foreach (Player player in State.Players.Values
-                 .Where(player => player.Status != PlayerStatus.Eliminated))
-    {
-      player.Score += completionBonus;
-    }
-
-    State.Wave++;
-    BeginWaveTransition(completionBonus);
-  }
-
-  private void BeginWaveTransition(int completionBonus)
-  {
-    ClearTransientEntities();
-    State.WaveCompletionBonus = completionBonus;
-    State.WaveTransitionTicksRemaining = WaveTransitionDurationInTicks();
-    if (State.WaveTransitionTicksRemaining == 0)
-    {
-      CompleteWaveTransition();
-    }
-  }
-
-  private void AdvanceWaveTransition()
-  {
-    State.WaveTransitionTicksRemaining--;
-    if (State.WaveTransitionTicksRemaining == 0)
-    {
-      CompleteWaveTransition();
-    }
-  }
-
-  private void CompleteWaveTransition()
-  {
-    State.WaveCompletionBonus = 0;
-    SpawnWave(State.Wave);
-  }
-
-  private void ClearTransientEntities()
-  {
-    foreach (ProjectileId projectileId in State.Projectiles.Keys.ToArray())
-    {
-      State.RemoveProjectile(projectileId);
-    }
-
-    foreach (PowerUpId powerUpId in State.PowerUps.Keys.ToArray())
-    {
-      State.RemovePowerUp(powerUpId);
-    }
-  }
-
-  private void SpawnWave(int wave)
-  {
-    IReadOnlyList<EnemySpawn> spawns = _levelManager.CreateSpawns(wave, _config.WorldBounds);
-    if (spawns.Any(spawn => spawn.Kind == EnemyKind.Boss))
-    {
-      State.BossPhase = 1;
-    }
-
-    foreach (EnemySpawn spawn in spawns)
-    {
-      AddEnemy(spawn.Kind, spawn.Position, spawn.Health, spawn.Speed);
-    }
-  }
-
-  private void UpdateBossPhase(Enemy enemy)
-  {
-    if (enemy.Kind != EnemyKind.Boss)
-    {
-      return;
-    }
-
-    if (State.Wave <= 0)
-    {
-      UpdateLegacyBossPhase(enemy);
-      return;
-    }
-
-    LevelConfig level = _levelManager.GetLevel(State.Wave);
-    float healthRatio = (float)enemy.Health / HealthForCurrentBoss(level);
-    int phase = FindBossPhase(level.BossPhases, healthRatio);
-    State.BossPhase = phase + 1;
-    TimeSpan interval = level.BossPhases[phase].AttackInterval;
-    enemy.AttackCooldownTicks = Math.Min(enemy.AttackCooldownTicks, DurationInTicks(interval));
-  }
-
-  private void UpdateBossAttack(Enemy boss)
-  {
-    if (boss.AttackCooldownTicks > 0 && --boss.AttackCooldownTicks > 0)
-    {
-      return;
-    }
-
-    Player[] targets = State.Players.Values
-        .Where(player => player.Status is PlayerStatus.Active or PlayerStatus.Invulnerable)
-        .OrderBy(player => player.Id.Value)
-        .ToArray();
-    if (State.BossPhase == 1)
-    {
-      if (targets.Length > 0)
-      {
-        FireAtPlayer(boss, targets[0], CurrentBossAttackDamage());
-      }
-    }
-    else
-    {
-      foreach (Player target in targets)
-      {
-        FireAtPlayer(boss, target, CurrentBossAttackDamage());
-      }
-    }
-
-    boss.AttackCooldownTicks = DurationInTicks(CurrentBossAttackInterval());
-  }
-
-  private void UpdateTankAttack(Enemy tank)
-  {
-    if (tank.AttackCooldownTicks > 0 && --tank.AttackCooldownTicks > 0)
-    {
-      return;
-    }
-
-    Player? target = ActivePlayers().FirstOrDefault();
-    if (target is not null)
-    {
-      FireAtPlayer(tank, target, _config.EnemyProjectileDamage);
-    }
-
-    tank.AttackCooldownTicks = DurationInTicks(_config.EnemyAttackInterval);
-  }
-
-  private IEnumerable<Player> ActivePlayers()
-  {
-    return State.Players.Values
-        .Where(player => player.Status is PlayerStatus.Active or PlayerStatus.Invulnerable)
-        .OrderBy(player => player.Id.Value);
-  }
-
-  private void FireAtPlayer(Enemy enemy, Player player, int damage)
-  {
-    Vector2D direction = (player.Position - enemy.Position).NormalizedOrZero();
-    Projectile projectile = _entityFactory.CreateProjectile(
-        enemy.Key,
-        EntityType.EnemyProjectile,
-        enemy.Position,
-        direction * _config.ProjectileSpeed,
-        CreateCircleHitbox(_config.ProjectileRadius),
-        damage);
-    State.AddProjectile(projectile);
+    DestroyEnemy(enemy);
+    _players.Damage(player, _context.Config.EnemyCollisionDamage);
   }
 
   private void ResolveProjectileCollision(Projectile projectile)
@@ -592,12 +287,8 @@ internal sealed class WorldSimulation
 
   private void ResolveAlliedProjectile(Projectile projectile)
   {
-    IEnumerable<Enemy> enemies = State.Enemies.Values
-        .Where(enemy => enemy.Status == EnemyStatus.Active);
-    Enemy? enemy = FindCollisionTarget<Enemy>(
-        projectile,
-        enemies,
-        CollisionType.Damage);
+    IEnumerable<Enemy> enemies = State.Enemies.Values.Where(IsActive);
+    Enemy? enemy = FindCollisionTarget<Enemy>(projectile, enemies, CollisionType.Damage);
     if (enemy is not null)
     {
       projectile.Status = ProjectileStatus.Consumed;
@@ -609,110 +300,120 @@ internal sealed class WorldSimulation
   {
     Player? player = FindCollisionTarget<Player>(
         projectile,
-        ActivePlayers(),
+        _players.ActivePlayers(),
         CollisionType.Damage);
     if (player is not null)
     {
       projectile.Status = ProjectileStatus.Consumed;
-      ApplyDamage(player, projectile.Damage);
+      _players.Damage(player, projectile.Damage);
     }
   }
 
   private void ApplyEnemyDamage(Enemy enemy, PlayerId ownerId, int damage)
   {
-    bool destroyed = _combatManager.ApplyDamage(enemy, damage);
-    if (!destroyed)
+    if (!_combat.ApplyDamage(enemy, damage))
     {
-      UpdateBossPhase(enemy);
+      _enemyAttacks.UpdateBossPhase(enemy);
       return;
     }
 
+    DestroyEnemy(enemy);
+    AwardKill(ownerId, enemy.Kind);
+    TryDropPowerUp(enemy);
+  }
+
+  private static void DestroyEnemy(Enemy enemy)
+  {
     enemy.Status = EnemyStatus.Destroyed;
     EnemyStateMachine.Destroy(enemy);
-    State.Players[ownerId].Score +=
-        enemy.Kind == EnemyKind.Boss ? _config.BossKillScore : _config.EnemyKillScore;
-    if (enemy.Kind != EnemyKind.Boss && ++_destroyedEnemyCount % 2 == 0)
+  }
+
+  private void AwardKill(PlayerId ownerId, EnemyKind kind)
+  {
+    int score = kind == EnemyKind.Boss
+        ? _context.Config.BossKillScore
+        : _context.Config.EnemyKillScore;
+    State.Players[ownerId].Score += score;
+  }
+
+  private void TryDropPowerUp(Enemy enemy)
+  {
+    if (enemy.Kind != EnemyKind.Boss && _dropPolicy.TryChoose(State.Wave, out PowerUpType type))
     {
-      IReadOnlyList<PowerUpType> available = CurrentAvailablePowerUps();
-      PowerUpType kind = available[(_destroyedEnemyCount / 2 - 1) % available.Count];
-      AddPowerUp(kind, enemy.Position);
+      AddPowerUp(type, enemy.Position);
     }
   }
 
-  private IReadOnlyList<PowerUpType> CurrentAvailablePowerUps()
+  private void SpawnEnemy(EnemySpawn spawn)
   {
-    if (State.Wave <= 0)
+    AddEnemy(spawn.Kind, spawn.Position, spawn.Health, spawn.Speed);
+  }
+
+  private void SetInitialBossPhase(EnemyKind kind)
+  {
+    if (kind == EnemyKind.Boss)
     {
-      return Enum.GetValues<PowerUpType>();
+      State.BossPhase = 1;
     }
-
-    return _levelManager.GetLevel(State.Wave).AvailablePowerUps;
   }
 
-  private int CurrentBossAttackDamage()
+  private void ValidateOwner(PlayerId ownerId)
   {
-    return State.Wave > 0 ? CurrentBossPhase().AttackDamage : _config.BossAttackDamage;
-  }
-
-  private TimeSpan CurrentBossAttackInterval()
-  {
-    if (State.Wave > 0)
+    if (!State.Players.ContainsKey(ownerId))
     {
-      return CurrentBossPhase().AttackInterval;
+      throw new ArgumentException("Projectile owner must belong to the world.", nameof(ownerId));
     }
-
-    return State.BossPhase == 2
-        ? _config.BossPhase2AttackInterval
-        : _config.BossPhase1AttackInterval;
   }
 
-  private float CurrentBossSpeedMultiplier()
+  private void UpdateDefeatStatus()
   {
-    if (State.Wave > 0)
+    if (State.Players.Count > 0 &&
+        State.Players.Values.All(player => player.Status == PlayerStatus.Eliminated))
     {
-      return CurrentBossPhase().SpeedMultiplier;
+      State.MatchStatus = MatchStatus.Lost;
     }
-
-    return State.BossPhase == 2 ? 1.5f : 1f;
   }
 
-  private BossPhaseConfig CurrentBossPhase()
+  private float HorizontalMargin(EnemyKind kind)
   {
-    LevelConfig level = _levelManager.GetLevel(State.Wave);
-    int phaseIndex = Math.Clamp(State.BossPhase - 1, 0, level.BossPhases.Count - 1);
-    return level.BossPhases[phaseIndex];
+    return kind == EnemyKind.Boss
+        ? _context.Config.BossHitboxWidth / 2f
+        : _context.Config.EnemyRadius;
   }
 
-  private static int FindBossPhase(IReadOnlyList<BossPhaseConfig> phases, float healthRatio)
+  private int HealthFor(EnemyKind kind)
   {
-    int selected = 0;
-    for (int index = 0; index < phases.Count; index++)
+    return kind switch
     {
-      if (healthRatio <= phases[index].HealthThreshold)
-      {
-        selected = index;
-      }
-    }
-
-    return selected;
+      EnemyKind.Diver => _context.Config.DiverHealth,
+      EnemyKind.Tank => _context.Config.TankHealth,
+      EnemyKind.Boss => _context.Config.BossHealth,
+      _ => _context.Config.EnemyHealth,
+    };
   }
 
-  private static int HealthForCurrentBoss(LevelConfig level)
+  private float SpeedFor(EnemyKind kind)
   {
-    return level.EnemyGroups.Single(group => group.Kind == EnemyKind.Boss).Health;
-  }
-
-  private void UpdateLegacyBossPhase(Enemy enemy)
-  {
-    if (enemy.Health > _config.BossHealth / 2)
+    return kind switch
     {
-      return;
-    }
+      EnemyKind.Scout => _context.Config.ScoutSpeed,
+      EnemyKind.Diver => _context.Config.DiverSpeed,
+      EnemyKind.Tank => _context.Config.TankSpeed,
+      EnemyKind.Boss => _context.Config.BossSpeed,
+      _ => 0f,
+    };
+  }
 
-    State.BossPhase = 2;
-    enemy.AttackCooldownTicks = Math.Min(
-        enemy.AttackCooldownTicks,
-        DurationInTicks(_config.BossPhase2AttackInterval));
+  private TimeSpan? AttackIntervalFor(EnemyKind kind)
+  {
+    return kind is EnemyKind.Tank or EnemyKind.Boss
+        ? _enemyAttacks.AttackInterval(kind)
+        : null;
+  }
+
+  private static bool IsActive(Enemy enemy)
+  {
+    return enemy.Status == EnemyStatus.Active;
   }
 
   private static TEntity? FindCollisionTarget<TEntity>(
@@ -728,47 +429,4 @@ internal sealed class WorldSimulation
         .OfType<TEntity>()
         .FirstOrDefault();
   }
-
-  private int HealthFor(EnemyKind kind) => kind switch
-  {
-    EnemyKind.Diver => _config.DiverHealth,
-    EnemyKind.Tank => _config.TankHealth,
-    EnemyKind.Boss => _config.BossHealth,
-    _ => _config.EnemyHealth,
-  };
-
-  private float SpeedFor(EnemyKind kind) => kind switch
-  {
-    EnemyKind.Scout => _config.ScoutSpeed,
-    EnemyKind.Diver => _config.DiverSpeed,
-    EnemyKind.Tank => _config.TankSpeed,
-    EnemyKind.Boss => _config.BossSpeed,
-    _ => 0f,
-  };
-
-  private TimeSpan? AttackIntervalFor(EnemyKind kind)
-  {
-    return kind switch
-    {
-      EnemyKind.Tank => _config.EnemyAttackInterval,
-      EnemyKind.Boss => State.Wave > 0
-          ? CurrentBossAttackInterval()
-          : _config.BossPhase1AttackInterval,
-      _ => null,
-    };
-  }
-
-  private static Hitbox CreateCircleHitbox(float radius)
-  {
-    return new Hitbox(Vector2D.Zero, new CircleShape(radius));
-  }
-
-  private int DurationInTicks(TimeSpan duration) =>
-      Math.Max(1, (int)Math.Ceiling(duration / _config.FixedStep));
-
-  private int WaveTransitionDurationInTicks() =>
-      _config.WaveTransitionDuration == TimeSpan.Zero
-          ? 0
-          : DurationInTicks(_config.WaveTransitionDuration);
-
 }

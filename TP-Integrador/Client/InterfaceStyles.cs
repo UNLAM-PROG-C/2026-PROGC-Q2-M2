@@ -84,24 +84,36 @@ internal static class InterfaceStyles
         label.HorizontalAlignment = HorizontalAlignment.Center;
     }
 
-    private static StyleBoxFlat CreateBox(Color background, Color border, int radius)
-    {
-        return new StyleBoxFlat
-        {
-            BgColor = background,
-            BorderColor = border,
-            BorderWidthLeft = 2,
-            BorderWidthTop = 2,
-            BorderWidthRight = 2,
-            BorderWidthBottom = 2,
-            CornerRadiusTopLeft = radius,
-            CornerRadiusTopRight = radius,
-            CornerRadiusBottomLeft = radius,
-            CornerRadiusBottomRight = radius,
-            ContentMarginLeft = 14f,
-            ContentMarginTop = 10f,
-            ContentMarginRight = 14f,
-            ContentMarginBottom = 10f,
-        };
-    }
+  private static StyleBoxFlat CreateBox(Color background, Color border, int radius)
+  {
+    StyleBoxFlat box = new() { BgColor = background, BorderColor = border };
+    SetBorder(box);
+    SetCorners(box, radius);
+    SetMargins(box);
+    return box;
+  }
+
+  private static void SetBorder(StyleBoxFlat box)
+  {
+    box.BorderWidthLeft = 2;
+    box.BorderWidthTop = 2;
+    box.BorderWidthRight = 2;
+    box.BorderWidthBottom = 2;
+  }
+
+  private static void SetCorners(StyleBoxFlat box, int radius)
+  {
+    box.CornerRadiusTopLeft = radius;
+    box.CornerRadiusTopRight = radius;
+    box.CornerRadiusBottomLeft = radius;
+    box.CornerRadiusBottomRight = radius;
+  }
+
+  private static void SetMargins(StyleBoxFlat box)
+  {
+    box.ContentMarginLeft = 14f;
+    box.ContentMarginTop = 10f;
+    box.ContentMarginRight = 14f;
+    box.ContentMarginBottom = 10f;
+  }
 }

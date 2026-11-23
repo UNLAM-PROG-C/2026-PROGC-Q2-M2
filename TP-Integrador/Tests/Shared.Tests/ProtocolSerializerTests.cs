@@ -36,6 +36,8 @@ public sealed class ProtocolSerializerTests
         new(13, new PingPayload(9, 123456)),
         new(14, new ErrorPayload("invalid", "Invalid request")),
         new(15, new ServerShutdownPayload("maintenance")),
+        new(16, new SetPausePayload(true)),
+        new(17, new PauseStatePayload(true, new PlayerId(1), 42)),
     };
 
   [Theory]
@@ -115,5 +117,20 @@ public sealed class ProtocolSerializerTests
     ProtocolMessage result = ProtocolSerializer.Deserialize(ProtocolSerializer.Serialize(message));
 
     Assert.Equal(requestedPlayers, Assert.IsType<HelloPayload>(result.Payload).RequestedPlayers);
+  }
+
+  [Theory]
+  [InlineData(true, false, 10)]
+  [InlineData(false, true, 10)]
+  [InlineData(true, true, -1)]
+  public void InvalidPauseStateIsRejected(bool paused, bool hasOwner, long serverTick)
+  {
+    PlayerId? owner = hasOwner ? new PlayerId(1) : null;
+    ProtocolMessage message = new(1, new PauseStatePayload(paused, owner, serverTick));
+
+    ProtocolException exception = Assert.Throws<ProtocolException>(() =>
+        ProtocolSerializer.Deserialize(ProtocolSerializer.Serialize(message)));
+
+    Assert.Equal(ProtocolError.InvalidPayload, exception.Error);
   }
 }
