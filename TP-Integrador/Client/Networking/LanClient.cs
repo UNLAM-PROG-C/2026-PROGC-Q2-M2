@@ -29,8 +29,8 @@ public sealed class LanClient : IAsyncDisposable
         _tcpClient = new TcpClient(AddressFamily.InterNetwork) { NoDelay = true };
         await _tcpClient.ConnectAsync(host, port, _shutdown.Token);
         _stream = _tcpClient.GetStream();
-        await SendAsync(new HelloPayload("vertical-slice-1", playerName, RequestedPlayers: requestedPlayers));
         _receiveTask = ReceiveLoopAsync(_shutdown.Token);
+        await SendAsync(new HelloPayload("vertical-slice-1", playerName, RequestedPlayers: requestedPlayers));
     }
 
     public async Task SendAsync(IProtocolPayload payload)
@@ -84,7 +84,7 @@ public sealed class LanClient : IAsyncDisposable
                 byte[]? frame = await LengthPrefixedFrame.ReadAsync(_stream!, cancellationToken);
                 if (frame is null)
                 {
-                    _incoming.Enqueue(new ErrorPayload("disconnected", "The server closed the connection."));
+                    _incoming.Enqueue(new ErrorPayload("disconnected", "El servidor cerró la conexión."));
                     return;
                 }
 

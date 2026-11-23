@@ -8,19 +8,19 @@
     "net10.0": []
   },
   "packageFolders": {
-    "C:\\Users\\LENPAD\\.nuget\\packages\\": {}
+    "C:\\Users\\Usuario\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\SpaceShooter.Shared.csproj",
+      "projectUniqueName": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\SpaceShooter.Shared.csproj",
       "projectName": "SpaceShooter.Shared",
-      "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\SpaceShooter.Shared.csproj",
-      "packagesPath": "C:\\Users\\LENPAD\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\obj\\",
+      "projectPath": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\SpaceShooter.Shared.csproj",
+      "packagesPath": "C:\\Users\\Usuario\\.nuget\\packages\\",
+      "outputPath": "D:\\Facultad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\LENPAD\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\Usuario\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
@@ -67,7 +67,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.404/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",

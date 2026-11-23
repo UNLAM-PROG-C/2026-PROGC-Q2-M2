@@ -31,14 +31,14 @@ public sealed class LobbyAdmission
       if (requestedPlayers is < 1 or > 4)
       {
         errorCode = "invalidMatchSize";
-        errorDescription = "The requested player count must be from 1 to 4.";
+        errorDescription = "La cantidad de jugadores debe ser de 1 a 4.";
         return false;
       }
 
       if (_matchStarted)
       {
         errorCode = "matchInProgress";
-        errorDescription = "A match is already in progress.";
+        errorDescription = "Ya hay una partida en progreso.";
         return false;
       }
 
@@ -46,14 +46,14 @@ public sealed class LobbyAdmission
       if (_targetPlayers != requestedPlayers)
       {
         errorCode = "matchSizeMismatch";
-        errorDescription = $"This lobby is configured for {_targetPlayers} players.";
+        errorDescription = $"Este lobby esta configurado para {_targetPlayers} jugadores.";
         return false;
       }
 
       if (_players.Count >= _targetPlayers)
       {
         errorCode = "lobbyFull";
-        errorDescription = $"This lobby already has {_targetPlayers} players.";
+        errorDescription = $"Este lobby ya tiene {_targetPlayers} jugadores.";
         return false;
       }
 

@@ -172,7 +172,7 @@ public sealed class LobbyServer(
     {
       ProtocolMessage error = new ProtocolMessage(
           1,
-          new ErrorPayload("serverFull", "The server already has four connected players."));
+          new ErrorPayload("serverFull", "El server ya tiene conectados 4 jugadores."));
       await LengthPrefixedFrame.WriteAsync(
           client.GetStream(),
           ProtocolSerializer.Serialize(error),

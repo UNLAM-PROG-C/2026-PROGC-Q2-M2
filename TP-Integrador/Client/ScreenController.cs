@@ -254,7 +254,15 @@ internal sealed class ScreenController
         InterfaceStyles.ApplyButton(ConnectButton, primary: true);
         content.AddChild(Center(ConnectButton));
 
-        Label status = new() { HorizontalAlignment = HorizontalAlignment.Center };
+        Label status = new()
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+
+        // Label status = new() { HorizontalAlignment = HorizontalAlignment.Center };
+        
         InterfaceStyles.ApplyLabel(status, 14, InterfaceStyles.MutedText);
         content.AddChild(status);
 
