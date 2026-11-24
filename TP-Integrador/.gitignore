@@ -24,3 +24,6 @@ records.json.tmp
 # OS
 Thumbs.db
 .DS_Store
+
+# build
+build
