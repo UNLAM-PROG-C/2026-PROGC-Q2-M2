@@ -953,11 +953,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
+      "projectUniqueName": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
       "projectName": "SpaceShooter.Server.Tests",
-      "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
+      "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\SpaceShooter.Server.Tests.csproj",
       "packagesPath": "C:\\Users\\LENPAD\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Tests\\Server.Tests\\obj\\",
+      "outputPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Server.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\LENPAD\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -973,8 +973,8 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Server\\SpaceShooter.Server.csproj": {
-              "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Server\\SpaceShooter.Server.csproj"
+            "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Server\\SpaceShooter.Server.csproj": {
+              "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Server\\SpaceShooter.Server.csproj"
             }
           }
         }

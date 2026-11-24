@@ -13,11 +13,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Shared\\SpaceShooter.Shared.csproj",
+      "projectUniqueName": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\SpaceShooter.Shared.csproj",
       "projectName": "SpaceShooter.Shared",
-      "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Shared\\SpaceShooter.Shared.csproj",
+      "projectPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\SpaceShooter.Shared.csproj",
       "packagesPath": "C:\\Users\\LENPAD\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Shared\\obj\\",
+      "outputPath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Shared\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\LENPAD\\AppData\\Roaming\\NuGet\\NuGet.Config"

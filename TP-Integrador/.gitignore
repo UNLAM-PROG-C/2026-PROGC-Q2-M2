@@ -1,0 +1,26 @@
+# .NET
+**/bin/
+**/obj/
+.dotnet-home/
+.nuget-packages/
+
+# Godot
+Client/.godot/
+
+# Rider / IntelliJ
+.idea/
+**/.idea/
+*.DotSettings.user
+
+# Runtime data and logs
+logs/
+data/
+records.json
+records.json.tmp
+
+# Godot-generated C# identifiers
+*.cs.uid
+
+# OS
+Thumbs.db
+.DS_Store

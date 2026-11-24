@@ -1,0 +1,110 @@
+using Godot;
+using SpaceShooter.GameDomain;
+
+namespace SpaceShooter.Client;
+
+/// <summary>
+/// Centralizes resource paths so rendering code does not depend on file layout.
+/// </summary>
+internal static class AssetCatalog
+{
+    private const string Root = "res://Assets/KenneySpaceShooter";
+    private static readonly Texture2D[] PlayerShips =
+    [
+      LoadTexture($"{Root}/Ships/player-blue.png"),
+    LoadTexture($"{Root}/Ships/player-red.png"),
+    LoadTexture($"{Root}/Ships/player-green.png"),
+    LoadTexture($"{Root}/Ships/player-gold.png"),
+  ];
+
+    public static Texture2D Background { get; } = LoadTexture($"{Root}/Background/space.png");
+
+    public static Font InterfaceFont { get; } = GD.Load<Font>($"{Root}/Fonts/kenvector-future.ttf");
+
+    public static AudioStream LaserSound { get; } = LoadAudio($"{Root}/Audio/laser.ogg");
+
+    public static AudioStream LoseSound { get; } = LoadAudio($"{Root}/Audio/lose.ogg");
+
+    public static Texture2D Projectile { get; } = LoadTexture($"{Root}/projectile.png");
+
+    public static AudioStream ShieldSound { get; } = LoadAudio($"{Root}/Audio/shield-up.ogg");
+
+    public static Texture2D GetEnemy(EnemyKind kind)
+    {
+        string name = kind switch
+        {
+            EnemyKind.Scout => "scout",
+            EnemyKind.Diver => "diver",
+            EnemyKind.Tank => "tank",
+            EnemyKind.Boss => "boss",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unsupported enemy kind."),
+        };
+        return LoadTexture($"{Root}/Enemies/{name}.png");
+    }
+
+    public static Texture2D GetPlayer(PlayerId id)
+    {
+        int index = Math.Abs(id.Value - 1) % PlayerShips.Length;
+        return PlayerShips[index];
+    }
+
+    public static Texture2D GetShip(string shipId)
+    {
+        int index = shipId switch
+        {
+            "blue" => 0,
+            "red" => 1,
+            "green" => 2,
+            "gold" => 3,
+            _ => 0,
+        };
+        return PlayerShips[index];
+    }
+
+    public static Color GetShipColor(string shipId)
+    {
+        return shipId switch
+        {
+            "red" => new Color("ef5350"),
+            "green" => new Color("66bb6a"),
+            "gold" => new Color("ffca28"),
+            _ => new Color("42a5f5"),
+        };
+    }
+
+    public static Color GetEnemyColor(EnemyKind kind)
+    {
+        return kind switch
+        {
+            EnemyKind.Scout => new Color("42a5c6"),
+            EnemyKind.Diver => new Color("7da35a"),
+            EnemyKind.Tank => new Color("8b789b"),
+            EnemyKind.Boss => new Color("d45b35"),
+            _ => Colors.White,
+        };
+    }
+
+    public static Texture2D GetPowerUp(PowerUpType type)
+    {
+        string name = type switch
+        {
+            PowerUpType.RapidFire => "rapid-fire",
+            PowerUpType.MultiShot => "multi-shot",
+            PowerUpType.Shield => "shield",
+            PowerUpType.SpeedBoost => "speed-boost",
+            PowerUpType.ExtraLife => "extra-life",
+            _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unsupported power-up type."),
+        };
+        return LoadTexture($"{Root}/PowerUps/{name}.png");
+    }
+
+    private static Texture2D LoadTexture(string path)
+    {
+        return GD.Load<Texture2D>(path);
+    }
+
+    private static AudioStream LoadAudio(string path)
+    {
+        return GD.Load<AudioStream>(path);
+    }
+}

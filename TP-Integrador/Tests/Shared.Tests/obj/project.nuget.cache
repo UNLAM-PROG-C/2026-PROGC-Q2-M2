@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "4/8jexiIJuY=",
+  "dgSpecHash": "cA2ikxtpHic=",
   "success": true,
-  "projectFilePath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\space-shooter-lan\\Tests\\Shared.Tests\\SpaceShooter.Shared.Tests.csproj",
+  "projectFilePath": "C:\\Users\\LENPAD\\IdeaProjects\\universidad\\2026-PROGC-Q2-M2\\TP-Integrador\\Tests\\Shared.Tests\\SpaceShooter.Shared.Tests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\LENPAD\\.nuget\\packages\\coverlet.collector\\6.0.4\\coverlet.collector.6.0.4.nupkg.sha512",
     "C:\\Users\\LENPAD\\.nuget\\packages\\microsoft.codecoverage\\17.14.1\\microsoft.codecoverage.17.14.1.nupkg.sha512",
