@@ -149,5 +149,3 @@ No utilizar la configuración `Player GDScript` de Rider: el proyecto usa C#.
 - [`Conexión, lobby e inicio`](docs/diagrams/final-lobby.html): handshake, selección, estado listo y comienzo sincronizado.
 - [`Entrada, simulación y snapshots`](docs/diagrams/final-game-loop.html): validación, game loop, actualización de enemigos y representación.
 - [`Fin de partida y cierre`](docs/diagrams/final-match-end-shutdown.html): ranking, récords, cancelación y liberación de recursos.
-
-Los diagramas representan el objetivo de la Fase 9. Distinguen mediante sus notas lo implementado hasta la Fase 5 de las capacidades todavía planificadas para las Fases 6 a 9.
